@@ -33,20 +33,20 @@ class MongoModel(BaseModel):
     collection_name: ClassVar[MongoCollection]
     object_id_fields: ClassVar[tuple[str, ...]] = ()
 
-    id: ObjectIdStr | None = None
+    # Generated client-side (as MongoDB drivers do), so a model always has an id.
+    id: ObjectIdStr = Field(default_factory=lambda: str(ObjectId()))
 
     @classmethod
     def from_mongo(cls, data: dict[str, Any]) -> Self:
         data = dict(data)
-        data["id"] = data.pop("_id", None)
+        data["id"] = data.pop("_id")
         return cls.model_validate(data)
 
     def to_mongo(self) -> dict[str, Any]:
         data = self.model_dump(exclude={"id"})
         for name in self.object_id_fields:
             data[name] = ObjectId(data[name])
-        if self.id is not None:
-            data["_id"] = ObjectId(self.id)
+        data["_id"] = ObjectId(self.id)
         return data
 
 

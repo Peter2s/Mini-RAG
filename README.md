@@ -98,9 +98,28 @@ All settings are listed in `.env.example`.
 ## Development
 
 ```bash
-uv run pytest
-uv run ruff check .
+uv sync
+uv run pre-commit install   # once per clone: installs the git hooks below
+```
+
+| When | Hook | What it checks |
+|---|---|---|
+| Every commit | pre-commit-hooks | Trailing whitespace, final newlines, LF line endings, valid YAML and TOML, merge markers, large files, private keys |
+| Every commit | uv-lock | `uv.lock` matches `pyproject.toml` |
+| Every commit | ruff | Lint with autofix, then format. Rules are in `pyproject.toml` |
+| Every commit | typos | Spelling in code, comments, and docs. Reports only |
+| Every commit | gitleaks | API keys, passwords, and other secrets |
+| Every commit | mypy | Strict type checking of `app/` and `tests/` |
+| Commit message | conventional-pre-commit | Messages like `feat(scope): description` or `fix: description` |
+| Before push | pytest | The full test suite |
+
+Run everything by hand with `uv run pre-commit run --all-files`, or the tools directly:
+
+```bash
+uv run ruff check --fix .
 uv run ruff format .
+uv run mypy
+uv run pytest
 ```
 
 Tests replace Claude with a fake provider. Database tests need MongoDB running

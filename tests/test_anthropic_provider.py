@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Any
 
 import anthropic
 import httpx2
@@ -20,7 +21,7 @@ def _provider(handler, **overrides) -> AnthropicLLMProvider:
     return provider
 
 
-def _message(stop_reason: str, text: str = "Paris [1].") -> dict:
+def _message(stop_reason: str, text: str = "Paris [1].") -> dict[str, Any]:
     return {
         "id": "msg_1",
         "type": "message",

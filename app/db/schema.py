@@ -11,6 +11,7 @@ from pymongo.errors import CollectionInvalid
 
 from app.core.enums import DocumentStatus, MongoCollection
 from app.db.indexes import INDEXES, sync_indexes
+from app.db.types import MongoDocument
 
 _OBJECT_ID = {"bsonType": "objectId"}
 _DATE = {"bsonType": "date"}
@@ -73,10 +74,14 @@ VALIDATORS: dict[MongoCollection, dict[str, Any]] = {
 }
 
 
-async def apply_schema(db: AsyncDatabase) -> None:
+async def apply_schema(db: AsyncDatabase[MongoDocument]) -> None:
     existing = set(await db.list_collection_names())
     for name, validator in VALIDATORS.items():
-        options = {"validator": validator, "validationLevel": "strict", "validationAction": "error"}
+        options: dict[str, Any] = {
+            "validator": validator,
+            "validationLevel": "strict",
+            "validationAction": "error",
+        }
         if name not in existing:
             try:
                 await db.create_collection(name, **options)

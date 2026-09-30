@@ -1,12 +1,13 @@
 """FastAPI dependency wiring: request -> database -> repositories -> services."""
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Request
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.config import Settings
 from app.db import MongoDatabase
+from app.db.types import MongoDocument
 from app.providers.embeddings import EmbeddingProvider
 from app.providers.llm import LLMProvider
 from app.repositories import (
@@ -20,27 +21,27 @@ from app.services import CollectionService, DocumentService, RagService
 
 
 def get_settings(request: Request) -> Settings:
-    return request.app.state.settings
+    return cast(Settings, request.app.state.settings)
 
 
 def get_mongo(request: Request) -> MongoDatabase:
-    return request.app.state.mongo
+    return cast(MongoDatabase, request.app.state.mongo)
 
 
-def get_db(mongo: Annotated[MongoDatabase, Depends(get_mongo)]) -> AsyncDatabase:
+def get_db(mongo: Annotated[MongoDatabase, Depends(get_mongo)]) -> AsyncDatabase[MongoDocument]:
     return mongo.db
 
 
 def get_embedding_provider(request: Request) -> EmbeddingProvider:
-    return request.app.state.embedder
+    return cast(EmbeddingProvider, request.app.state.embedder)
 
 
 def get_llm_provider(request: Request) -> LLMProvider:
-    return request.app.state.llm
+    return cast(LLMProvider, request.app.state.llm)
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-DbDep = Annotated[AsyncDatabase, Depends(get_db)]
+DbDep = Annotated[AsyncDatabase[MongoDocument], Depends(get_db)]
 
 
 def get_file_repository(settings: SettingsDep) -> FileRepository:

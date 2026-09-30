@@ -1,6 +1,7 @@
 import hashlib
 import math
 import re
+from itertools import pairwise
 
 from app.providers.embeddings.base import InputType
 
@@ -26,9 +27,7 @@ class HashEmbeddingProvider:
 
     def _embed_one(self, text: str) -> list[float]:
         tokens = [token.lower() for token in _TOKEN.findall(text)]
-        features = tokens + [
-            f"{first}_{second}" for first, second in zip(tokens, tokens[1:], strict=False)
-        ]
+        features = tokens + [f"{first}_{second}" for first, second in pairwise(tokens)]
         vector = [0.0] * self.dimension
         for feature in features:
             digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest()

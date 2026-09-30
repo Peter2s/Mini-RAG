@@ -4,6 +4,7 @@ import numpy as np
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.enums import MongoCollection
+from app.db.types import MongoDocument
 from app.models import to_object_id
 from app.schemas.rag import VectorMatch
 
@@ -23,7 +24,7 @@ class MongoVectorRepository:
     MongoDB Atlas Vector Search.
     """
 
-    def __init__(self, db: AsyncDatabase) -> None:
+    def __init__(self, db: AsyncDatabase[MongoDocument]) -> None:
         self.chunks = db[MongoCollection.CHUNKS]
         self.documents = db[MongoCollection.DOCUMENTS]
 

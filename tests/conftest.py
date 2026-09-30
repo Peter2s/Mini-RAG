@@ -1,6 +1,7 @@
 import os
 import uuid
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ from pymongo.database import Database
 from pymongo.errors import PyMongoError
 
 from app.core.config import Settings
+from app.db.types import MongoDocument
 from app.dependencies import get_llm_provider
 from app.main import create_app
 from app.schemas.llm import LLMResponse
@@ -35,6 +37,7 @@ def mongo_url() -> str:
     """MongoDB for tests: MONGODB_TEST_URL, else MONGODB_URL from the environment or `.env`."""
     url = os.environ.get("MONGODB_TEST_URL") or Settings().mongodb_url.get_secret_value()
     try:
+        client: MongoClient[MongoDocument]
         with MongoClient(url, serverSelectionTimeoutMS=2000) as client:
             client.admin.command("ping")
     except PyMongoError as error:
@@ -45,16 +48,17 @@ def mongo_url() -> str:
 
 
 @pytest.fixture
-def mongo_db(mongo_url: str) -> Iterator[Database]:
+def mongo_db(mongo_url: str) -> Iterator[Database[MongoDocument]]:
     """A throwaway database per test, dropped afterwards. Used for direct assertions."""
     name = f"mini_rag_test_{uuid.uuid4().hex[:12]}"
+    client: MongoClient[MongoDocument]
     with MongoClient(mongo_url, tz_aware=True) as client:
         yield client[name]
         client.drop_database(name)
 
 
 @pytest.fixture
-def settings(tmp_path, mongo_url: str, mongo_db: Database) -> Settings:
+def settings(tmp_path, mongo_url: str, mongo_db: Database[MongoDocument]) -> Settings:
     return Settings(
         _env_file=None,
         mongodb_url=mongo_url,
@@ -80,7 +84,8 @@ def client(settings: Settings, fake_llm: FakeLLM) -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def collection(client: TestClient) -> dict:
+def collection(client: TestClient) -> dict[str, Any]:
     response = client.post("/api/v1/collections", json={"name": "demo", "description": "test"})
     assert response.status_code == 201
-    return response.json()
+    created: dict[str, Any] = response.json()
+    return created

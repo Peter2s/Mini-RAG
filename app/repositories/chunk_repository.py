@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from bson import ObjectId
 from pymongo import UpdateOne
 
+from app.db.types import MongoDocument
 from app.models import Chunk, to_object_id
 from app.repositories.base import MongoRepository
 from app.schemas.chunk import TextChunk
@@ -39,7 +40,7 @@ class ChunkRepository(MongoRepository[Chunk]):
         collection_object_id = to_object_id(collection_id)
         if collection_object_id is None:
             return []
-        query = {"collection_id": collection_object_id}
+        query: MongoDocument = {"collection_id": collection_object_id}
         if only_missing:
             query["embedding"] = None
         # Existing embeddings aren't needed to re-embed, so don't transfer them.

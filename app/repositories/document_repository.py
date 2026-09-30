@@ -11,7 +11,7 @@ class DocumentRepository(MongoRepository[Document]):
     async def add(self, entity: Document) -> Document:
         try:
             return await super().add(entity)
-        except DuplicateKeyError as error: 
+        except DuplicateKeyError as error:
             raise ConflictError(
                 "A file with the same content is already in this collection"
             ) from error

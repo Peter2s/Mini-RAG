@@ -1,6 +1,8 @@
 import logging
 
 import anthropic
+from anthropic.types import Message
+from anthropic.types.beta import BetaMessage
 
 from app.core.config import Settings
 from app.core.exceptions import LLMError, LLMRefusalError
@@ -17,42 +19,22 @@ class AnthropicLLMProvider:
     """Generates answers with Claude through the official Anthropic SDK."""
 
     def __init__(self, settings: Settings) -> None:
-        client_arguments = {}
-        if settings.anthropic_api_key:
-            client_arguments["api_key"] = settings.anthropic_api_key.get_secret_value()
-        # Without an explicit key the SDK resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
-        # or an `ant auth login` profile.
-        self._client = anthropic.AsyncAnthropic(**client_arguments)
+
+        self._client = (
+            anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
+            if settings.anthropic_api_key
+            else anthropic.AsyncAnthropic()
+        )
         self._model = settings.llm_model
         self._max_tokens = settings.llm_max_tokens
         self._effort = settings.llm_effort
         self._enable_fallbacks = settings.llm_enable_fallbacks
 
     async def generate(self, *, system: str, prompt: str) -> LLMResponse:
-        request = {
-            "model": self._model,
-            "max_tokens": self._max_tokens,
-            "system": system,
-            "messages": [{"role": "user", "content": prompt}],
-            "output_config": {"effort": self._effort},
-        }
         try:
-            if self._enable_fallbacks:
-                response = await self._client.beta.messages.create(
-                    **request, betas=[_FALLBACK_BETA], fallbacks="default"
-                )
-            else:
-                response = await self._client.messages.create(**request)
-        except anthropic.AuthenticationError as error:
-            raise LLMError("Anthropic authentication failed. Check ANTHROPIC_API_KEY.") from error
-        except anthropic.RateLimitError as error:
-            raise LLMError("Anthropic rate limit reached. Retry later.") from error
-        except anthropic.BadRequestError as error:
-            raise LLMError(f"Anthropic rejected the request: {error.message}") from error
-        except anthropic.APIStatusError as error:
-            raise LLMError(f"Anthropic API error ({error.status_code}): {error.message}") from error
-        except anthropic.APIConnectionError as error:
-            raise LLMError("Could not reach the Anthropic API.") from error
+            response = await self._create(system=system, prompt=prompt)
+        except anthropic.APIError as error:
+            raise _to_llm_error(error) from error
         except TypeError as error:
             # The SDK raises TypeError when no API key, auth token, or profile is configured.
             if "authentication method" not in str(error):
@@ -77,5 +59,39 @@ class AnthropicLLMProvider:
             output_tokens=response.usage.output_tokens,
         )
 
+    async def _create(self, *, system: str, prompt: str) -> Message | BetaMessage:
+        if self._enable_fallbacks:
+            return await self._client.beta.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+                output_config={"effort": self._effort},
+                betas=[_FALLBACK_BETA],
+                fallbacks="default",
+            )
+        return await self._client.messages.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+            output_config={"effort": self._effort},
+        )
+
     async def aclose(self) -> None:
         await self._client.close()
+
+
+def _to_llm_error(error: anthropic.APIError) -> LLMError:
+    """Map SDK errors to a message the API can show, most specific first."""
+    if isinstance(error, anthropic.AuthenticationError):
+        return LLMError("Anthropic authentication failed. Check ANTHROPIC_API_KEY.")
+    if isinstance(error, anthropic.RateLimitError):
+        return LLMError("Anthropic rate limit reached. Retry later.")
+    if isinstance(error, anthropic.BadRequestError):
+        return LLMError(f"Anthropic rejected the request: {error.message}")
+    if isinstance(error, anthropic.APIStatusError):
+        return LLMError(f"Anthropic API error ({error.status_code}): {error.message}")
+    if isinstance(error, anthropic.APIConnectionError):
+        return LLMError("Could not reach the Anthropic API.")
+    return LLMError(f"Anthropic API error: {error.message}")

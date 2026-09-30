@@ -20,6 +20,7 @@ from pymongo import ASCENDING, IndexModel
 from pymongo.asynchronous.collection import AsyncCollection
 
 from app.core.enums import MongoCollection
+from app.db.types import MongoDocument
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,9 @@ def _definition(spec: Mapping[str, Any]) -> tuple[Any, ...]:
     return normalized_key, options
 
 
-async def sync_indexes(collection: AsyncCollection, indexes: list[IndexModel]) -> None:
+async def sync_indexes(
+    collection: AsyncCollection[MongoDocument], indexes: list[IndexModel]
+) -> None:
     declared = {index.document["name"]: index.document for index in indexes}
     existing = await collection.index_information()
 

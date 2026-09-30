@@ -22,7 +22,8 @@ class VoyageEmbeddingProvider:
             result = await self._client.embed(texts, model=self._model, input_type=input_type)
         except Exception as error:  # voyageai raises several unrelated error types
             raise EmbeddingError(f"Voyage embedding request failed: {error}") from error
-        return result.embeddings
+        embeddings: list[list[float]] = result.embeddings
+        return embeddings
 
     async def aclose(self) -> None:
         return None

@@ -10,8 +10,10 @@ from app.schemas.common import HealthResponse
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health", response_model=HealthResponse)
-async def health(settings: SettingsDep, mongo: Annotated[MongoDatabase, Depends(get_mongo)]):
+@router.get("/health")
+async def health(
+    settings: SettingsDep, mongo: Annotated[MongoDatabase, Depends(get_mongo)]
+) -> HealthResponse:
     try:
         await mongo.ping()
         database = DatabaseStatus.OK

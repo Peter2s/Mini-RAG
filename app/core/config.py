@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     voyage_api_key: SecretStr | None = None
     voyage_model: str = "voyage-3.5"
 
-    # LLM (Claude)
+    # Claude LLM
     anthropic_api_key: SecretStr | None = None
     llm_model: str = "claude-opus-5-5"
     llm_max_tokens: int = 16000

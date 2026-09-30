@@ -61,5 +61,5 @@ def test_normalizes_whitespace_before_splitting():
 
 @pytest.mark.parametrize(("size", "overlap"), [(0, 0), (100, 100), (100, 150), (100, -1)])
 def test_invalid_parameters(size, overlap):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"^chunk_(size|overlap) must"):
         split_pages([LoadedPage("text")], size, overlap)
