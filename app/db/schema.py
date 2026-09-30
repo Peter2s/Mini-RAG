@@ -10,7 +10,8 @@ from pymongo import ASCENDING, IndexModel
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import CollectionInvalid
 
-from app.models import Chunk, Collection, Document, DocumentStatus
+from app.core.enums import MongoCollection
+from app.models import DocumentStatus
 
 _OBJECT_ID = {"bsonType": "objectId"}
 _DATE = {"bsonType": "date"}
@@ -32,8 +33,8 @@ def _schema(title: str, properties: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-VALIDATORS: dict[str, dict[str, Any]] = {
-    Collection.collection_name: _schema(
+VALIDATORS: dict[MongoCollection, dict[str, Any]] = {
+    MongoCollection.COLLECTIONS: _schema(
         "Collection",
         {
             "name": {"bsonType": "string", "minLength": 1, "maxLength": 100},
@@ -42,7 +43,7 @@ VALIDATORS: dict[str, dict[str, Any]] = {
             "updated_at": _DATE,
         },
     ),
-    Document.collection_name: _schema(
+    MongoCollection.DOCUMENTS: _schema(
         "Document",
         {
             "collection_id": _OBJECT_ID,
@@ -56,7 +57,7 @@ VALIDATORS: dict[str, dict[str, Any]] = {
             "updated_at": _DATE,
         },
     ),
-    Chunk.collection_name: _schema(
+    MongoCollection.CHUNKS: _schema(
         "Chunk",
         {
             "collection_id": _OBJECT_ID,
@@ -71,14 +72,14 @@ VALIDATORS: dict[str, dict[str, Any]] = {
     ),
 }
 
-INDEXES: dict[str, list[IndexModel]] = {
-    Collection.collection_name: [
+INDEXES: dict[MongoCollection, list[IndexModel]] = {
+    MongoCollection.COLLECTIONS: [
         IndexModel([("name", ASCENDING)], unique=True, name="uniq_name"),
     ],
-    Document.collection_name: [
+    MongoCollection.DOCUMENTS: [
         IndexModel([("collection_id", ASCENDING)], name="by_collection"),
     ],
-    Chunk.collection_name: [
+    MongoCollection.CHUNKS: [
         IndexModel([("collection_id", ASCENDING)], name="by_collection"),
         IndexModel(
             [("document_id", ASCENDING), ("chunk_index", ASCENDING)], name="by_document_order"

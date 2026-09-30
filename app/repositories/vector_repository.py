@@ -3,7 +3,8 @@ from typing import Protocol
 import numpy as np
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.models import Chunk, Document, to_object_id
+from app.core.enums import MongoCollection
+from app.models import to_object_id
 from app.schemas.rag import VectorMatch
 
 
@@ -23,8 +24,8 @@ class MongoVectorRepository:
     """
 
     def __init__(self, db: AsyncDatabase) -> None:
-        self.chunks = db[Chunk.collection_name]
-        self.documents = db[Document.collection_name]
+        self.chunks = db[MongoCollection.CHUNKS]
+        self.documents = db[MongoCollection.DOCUMENTS]
 
     async def search(
         self, collection_id: str, query_vector: list[float], top_k: int

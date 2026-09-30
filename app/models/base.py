@@ -4,6 +4,8 @@ from typing import Annotated, Any, ClassVar, Self
 from bson import ObjectId
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
+from app.core.enums import MongoCollection
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -28,7 +30,7 @@ class MongoModel(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True, use_enum_values=True)
 
-    collection_name: ClassVar[str]
+    collection_name: ClassVar[MongoCollection]
     object_id_fields: ClassVar[tuple[str, ...]] = ()
 
     id: ObjectIdStr | None = None

@@ -5,10 +5,16 @@ from bson import ObjectId
 from fastapi.testclient import TestClient
 from pymongo.errors import WriteError
 
+from app.core.enums import MongoCollection
 from app.db.schema import INDEXES, VALIDATORS
 from app.main import create_app
 
 NOW = datetime.now(UTC)
+
+
+def test_every_mongo_collection_has_a_schema_and_indexes():
+    assert set(VALIDATORS) == set(MongoCollection)
+    assert set(INDEXES) == set(MongoCollection)
 
 
 def test_startup_creates_collections_validators_and_indexes(client, mongo_db):
@@ -20,7 +26,7 @@ def test_startup_creates_collections_validators_and_indexes(client, mongo_db):
         assert collections_by_name[name]["options"]["validationAction"] == "error"
         index_names = set(mongo_db[name].index_information())
         assert {index.document["name"] for index in INDEXES[name]} <= index_names
-    assert mongo_db["collections"].index_information()["uniq_name"]["unique"] is True
+    assert mongo_db[MongoCollection.COLLECTIONS].index_information()["uniq_name"]["unique"] is True
 
 
 def test_schema_can_be_applied_again_on_restart(client, settings):
@@ -31,14 +37,20 @@ def test_schema_can_be_applied_again_on_restart(client, settings):
 @pytest.mark.parametrize(
     ("collection", "document"),
     [
-        ("collections", {"name": 123, "description": None, "created_at": NOW, "updated_at": NOW}),
-        ("collections", {"name": "x", "description": None, "created_at": NOW}),  # missing field
         (
-            "collections",
+            MongoCollection.COLLECTIONS,
+            {"name": 123, "description": None, "created_at": NOW, "updated_at": NOW},
+        ),
+        (
+            MongoCollection.COLLECTIONS,
+            {"name": "x", "description": None, "created_at": NOW},
+        ),  # missing field
+        (
+            MongoCollection.COLLECTIONS,
             {"name": "x", "description": None, "created_at": NOW, "updated_at": NOW, "extra": 1},
         ),
         (
-            "documents",
+            MongoCollection.DOCUMENTS,
             {
                 "collection_id": ObjectId(),
                 "filename": "a.txt",
@@ -52,7 +64,7 @@ def test_schema_can_be_applied_again_on_restart(client, settings):
             },
         ),
         (
-            "chunks",
+            MongoCollection.CHUNKS,
             {
                 "collection_id": ObjectId(),
                 "document_id": "not-an-object-id",
@@ -64,7 +76,7 @@ def test_schema_can_be_applied_again_on_restart(client, settings):
             },
         ),
         (
-            "chunks",
+            MongoCollection.CHUNKS,
             {
                 "collection_id": ObjectId(),
                 "document_id": ObjectId(),
@@ -92,11 +104,11 @@ def _ingest(client, collection_id: str) -> None:
 
 def test_stored_documents_use_object_ids_and_embeddings(client, collection, mongo_db):
     _ingest(client, collection["id"])
-    chunk = mongo_db["chunks"].find_one()
+    chunk = mongo_db[MongoCollection.CHUNKS].find_one()
     assert isinstance(chunk["collection_id"], ObjectId)
     assert isinstance(chunk["document_id"], ObjectId)
     assert len(chunk["embedding"]) == 512
-    document = mongo_db["documents"].find_one()
+    document = mongo_db[MongoCollection.DOCUMENTS].find_one()
     assert document["status"] == "processed"
 
 
@@ -107,8 +119,10 @@ def test_deleting_document_deletes_its_chunks(client, collection, mongo_db):
 
     response = client.delete(f"/api/v1/collections/{collection['id']}/documents/{first}")
     assert response.status_code == 204
-    assert mongo_db["chunks"].count_documents({"document_id": ObjectId(first)}) == 0
-    assert mongo_db["chunks"].count_documents({}) > 0  # the other document's chunks remain
+    assert mongo_db[MongoCollection.CHUNKS].count_documents({"document_id": ObjectId(first)}) == 0
+    assert (
+        mongo_db[MongoCollection.CHUNKS].count_documents({}) > 0
+    )  # the other document's chunks remain
 
 
 def test_deleting_collection_deletes_documents_and_chunks(client, collection, mongo_db):
@@ -119,8 +133,24 @@ def test_deleting_collection_deletes_documents_and_chunks(client, collection, mo
     assert client.delete(f"/api/v1/collections/{collection['id']}").status_code == 204
 
     collection_object_id = ObjectId(collection["id"])
-    assert mongo_db["documents"].count_documents({"collection_id": collection_object_id}) == 0
-    assert mongo_db["chunks"].count_documents({"collection_id": collection_object_id}) == 0
+    assert (
+        mongo_db[MongoCollection.DOCUMENTS].count_documents({"collection_id": collection_object_id})
+        == 0
+    )
+    assert (
+        mongo_db[MongoCollection.CHUNKS].count_documents({"collection_id": collection_object_id})
+        == 0
+    )
     other_collection_object_id = ObjectId(other["id"])
-    assert mongo_db["documents"].count_documents({"collection_id": other_collection_object_id}) == 2
-    assert mongo_db["chunks"].count_documents({"collection_id": other_collection_object_id}) > 0
+    assert (
+        mongo_db[MongoCollection.DOCUMENTS].count_documents(
+            {"collection_id": other_collection_object_id}
+        )
+        == 2
+    )
+    assert (
+        mongo_db[MongoCollection.CHUNKS].count_documents(
+            {"collection_id": other_collection_object_id}
+        )
+        > 0
+    )

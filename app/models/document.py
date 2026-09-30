@@ -1,6 +1,7 @@
 from enum import StrEnum
 from typing import ClassVar
 
+from app.core.enums import MongoCollection
 from app.models.base import ObjectIdStr, TimestampedModel
 
 
@@ -11,7 +12,7 @@ class DocumentStatus(StrEnum):
 
 
 class Document(TimestampedModel):
-    collection_name: ClassVar[str] = "documents"
+    collection_name: ClassVar[MongoCollection] = MongoCollection.DOCUMENTS
     object_id_fields: ClassVar[tuple[str, ...]] = ("collection_id",)
 
     collection_id: ObjectIdStr

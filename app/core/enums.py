@@ -16,3 +16,11 @@ class FileExtension(StrEnum):
             return cls(Path(path).suffix.lower())
         except ValueError:
             return None
+
+
+class MongoCollection(StrEnum):
+    """Names of the MongoDB collections the app stores data in."""
+
+    COLLECTIONS = "collections"
+    DOCUMENTS = "documents"
+    CHUNKS = "chunks"
