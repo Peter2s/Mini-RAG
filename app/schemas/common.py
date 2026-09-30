@@ -1,11 +1,13 @@
 from pydantic import BaseModel
 
+from app.core.enums import DatabaseStatus, HealthStatus
+
 
 class HealthResponse(BaseModel):
-    status: str
+    status: HealthStatus
     app: str
     version: str
-    database: str
+    database: DatabaseStatus
 
 
 class Page[T](BaseModel):

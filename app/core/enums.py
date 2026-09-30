@@ -32,3 +32,17 @@ class MongoCollection(StrEnum):
     COLLECTIONS = "collections"
     DOCUMENTS = "documents"
     CHUNKS = "chunks"
+
+
+class HealthStatus(StrEnum):
+    """Overall state reported by the health check."""
+
+    OK = "ok"
+    DEGRADED = "degraded"
+
+
+class DatabaseStatus(StrEnum):
+    """Whether the health check could reach the database."""
+
+    OK = "ok"
+    UNAVAILABLE = "unavailable"
