@@ -13,7 +13,6 @@ from app.repositories import (
     CollectionRepository,
     DocumentRepository,
     FileRepository,
-    NewChunk,
 )
 from app.schemas.common import Page
 from app.schemas.document import (
@@ -149,10 +148,7 @@ class DocumentService:
         try:
             pages = await run_in_threadpool(load_pages, Path(document.stored_path))
             # Pages are split separately, so every chunk keeps the metadata of its page.
-            chunks = [
-                NewChunk(text=chunk.text, metadata=chunk.metadata)
-                for chunk in split_pages(pages, chunk_size, chunk_overlap)
-            ]
+            chunks = split_pages(pages, chunk_size, chunk_overlap)
             if not chunks:
                 raise ValueError("No text could be extracted from the document")
             created = await self.chunks.replace_for_document(

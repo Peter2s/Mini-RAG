@@ -3,7 +3,6 @@
 All LangChain usage lives here, so switching loaders never touches the services.
 """
 
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +10,7 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.document_loaders import BaseLoader
 
 from app.core.enums import FileExtension
+from app.schemas.chunk import LoadedPage
 
 # Loader metadata keys we never store or return. `source` is the server-side file path.
 _HIDDEN_METADATA = frozenset({"source", "file_path"})
@@ -22,14 +22,6 @@ class UnsupportedFileTypeError(ValueError):
 
 class DocumentLoadError(ValueError):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class LoadedPage:
-    """One unit of content from a loader: a PDF page, or a whole text/markdown file."""
-
-    content: str
-    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def get_loader(path: Path) -> BaseLoader:

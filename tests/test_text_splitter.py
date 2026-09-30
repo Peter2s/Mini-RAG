@@ -1,6 +1,6 @@
 import pytest
 
-from app.utils.file_loader import LoadedPage
+from app.schemas.chunk import LoadedPage
 from app.utils.text_splitter import normalize_text, split_pages
 
 

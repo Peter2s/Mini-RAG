@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.dependencies import get_llm_provider
 from app.main import create_app
-from app.providers.llm import LLMResponse
+from app.schemas.llm import LLMResponse
 
 
 class FakeLLM:

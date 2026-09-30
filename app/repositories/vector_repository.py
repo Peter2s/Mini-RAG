@@ -1,22 +1,11 @@
-from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Chunk, Document
-
-
-@dataclass(frozen=True, slots=True)
-class VectorMatch:
-    chunk_id: int
-    document_id: int
-    filename: str
-    chunk_index: int
-    text: str
-    score: float
-    metadata: dict[str, Any]
+from app.schemas.rag import VectorMatch
 
 
 class VectorRepository(Protocol):

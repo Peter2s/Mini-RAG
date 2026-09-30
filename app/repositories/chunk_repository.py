@@ -1,24 +1,17 @@
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from typing import Any
 
 from sqlalchemy import delete, func, select, update
 
 from app.models import Chunk
 from app.repositories.base import BaseRepository
-
-
-@dataclass(frozen=True, slots=True)
-class NewChunk:
-    text: str
-    metadata: dict[str, Any] = field(default_factory=dict)
+from app.schemas.chunk import TextChunk
 
 
 class ChunkRepository(BaseRepository[Chunk]):
     model = Chunk
 
     async def replace_for_document(
-        self, collection_id: int, document_id: int, chunks: Sequence[NewChunk]
+        self, collection_id: int, document_id: int, chunks: Sequence[TextChunk]
     ) -> int:
         """Delete a document's existing chunks and insert new ones in one transaction."""
         await self.session.execute(delete(Chunk).where(Chunk.document_id == document_id))

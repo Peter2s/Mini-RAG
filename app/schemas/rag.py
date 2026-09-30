@@ -1,6 +1,20 @@
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+@dataclass(frozen=True, slots=True)
+class VectorMatch:
+    """A chunk returned by vector search, before it is shaped into an API response."""
+
+    chunk_id: int
+    document_id: int
+    filename: str
+    chunk_index: int
+    text: str
+    score: float
+    metadata: dict[str, Any]
 
 
 class IndexRequest(BaseModel):

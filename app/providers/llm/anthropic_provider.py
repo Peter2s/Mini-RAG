@@ -4,7 +4,7 @@ import anthropic
 
 from app.core.config import Settings
 from app.core.exceptions import LLMError, LLMRefusalError
-from app.providers.llm.base import LLMResponse
+from app.schemas.llm import LLMResponse
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,7 @@ from app.core.exceptions import BadRequestError, NotFoundError
 from app.providers.embeddings import EmbeddingProvider
 from app.providers.llm import LLMProvider
 from app.repositories import ChunkRepository, CollectionRepository, VectorRepository
-from app.repositories.vector_repository import VectorMatch
-from app.schemas.rag import AnswerResponse, IndexResult, SearchHit, SearchResponse
+from app.schemas.rag import AnswerResponse, IndexResult, SearchHit, SearchResponse, VectorMatch
 
 SYSTEM_PROMPT = """\
 You answer questions using only the documents provided from the user's knowledge base.

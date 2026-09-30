@@ -2,21 +2,13 @@
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from typing import Any
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.utils.file_loader import LoadedPage
+from app.schemas.chunk import LoadedPage, TextChunk
 
 _MANY_NEWLINES = re.compile(r"\n{3,}")
 _SPACES = re.compile(r"[ \t\f\v]+")
-
-
-@dataclass(frozen=True, slots=True)
-class TextChunk:
-    text: str
-    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def normalize_text(text: str) -> str:
@@ -36,7 +28,7 @@ def build_splitter(chunk_size: int, chunk_overlap: int) -> RecursiveCharacterTex
     return RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        add_start_index=True,  
+        add_start_index=True,
     )
 
 

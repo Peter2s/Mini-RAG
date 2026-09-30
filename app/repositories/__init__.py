@@ -1,4 +1,4 @@
-from app.repositories.chunk_repository import ChunkRepository, NewChunk
+from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.collection_repository import CollectionRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.file_repository import FileRepository
@@ -8,7 +8,6 @@ __all__ = [
     "ChunkRepository",
     "DocumentRepository",
     "FileRepository",
-    "NewChunk",
     "CollectionRepository",
     "SQLVectorRepository",
     "VectorRepository",

@@ -1,14 +1,6 @@
-from dataclasses import dataclass
 from typing import Protocol
 
-
-@dataclass(frozen=True, slots=True)
-class LLMResponse:
-    text: str
-    model: str
-    stop_reason: str | None
-    input_tokens: int | None = None
-    output_tokens: int | None = None
+from app.schemas.llm import LLMResponse
 
 
 class LLMProvider(Protocol):
