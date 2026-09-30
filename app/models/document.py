@@ -1,14 +1,7 @@
-from enum import StrEnum
 from typing import ClassVar
 
-from app.core.enums import MongoCollection
+from app.core.enums import DocumentStatus, MongoCollection
 from app.models.base import ObjectIdStr, TimestampedModel
-
-
-class DocumentStatus(StrEnum):
-    UPLOADED = "uploaded"
-    PROCESSED = "processed"
-    FAILED = "failed"
 
 
 class Document(TimestampedModel):

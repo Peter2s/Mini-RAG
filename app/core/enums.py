@@ -18,6 +18,14 @@ class FileExtension(StrEnum):
             return None
 
 
+class DocumentStatus(StrEnum):
+    """Processing state of an uploaded document."""
+
+    UPLOADED = "uploaded"
+    PROCESSED = "processed"
+    FAILED = "failed"
+
+
 class MongoCollection(StrEnum):
     """Names of the MongoDB collections the app stores data in."""
 

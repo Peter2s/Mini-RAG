@@ -5,9 +5,9 @@ from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
-from app.core.enums import FileExtension
+from app.core.enums import DocumentStatus, FileExtension
 from app.core.exceptions import BadRequestError, NotFoundError, PayloadTooLargeError
-from app.models import Document, DocumentStatus
+from app.models import Document
 from app.repositories import (
     ChunkRepository,
     CollectionRepository,

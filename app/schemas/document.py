@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.enums import DocumentStatus
+
 
 class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -11,7 +13,7 @@ class DocumentRead(BaseModel):
     filename: str
     content_type: str | None
     size_bytes: int
-    status: str
+    status: DocumentStatus
     error: str | None
     created_at: datetime
     updated_at: datetime
@@ -34,7 +36,7 @@ class ProcessRequest(BaseModel):
 
 class ProcessResult(BaseModel):
     document_id: str
-    status: str
+    status: DocumentStatus
     pages_loaded: int = 0
     chunks_created: int
     error: str | None = None

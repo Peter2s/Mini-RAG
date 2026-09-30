@@ -16,5 +16,5 @@ class Chunk(MongoModel):
     chunk_index: int
     text: str
     metadata: dict[str, Any] = Field(default_factory=dict)
-    embedding: list[float] | None = None  # None until the chunk is indexed
+    embedding: list[float] | None = None  
     created_at: datetime = Field(default_factory=utcnow)

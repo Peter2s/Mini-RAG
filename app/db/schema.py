@@ -10,8 +10,7 @@ from pymongo import ASCENDING, IndexModel
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import CollectionInvalid
 
-from app.core.enums import MongoCollection
-from app.models import DocumentStatus
+from app.core.enums import DocumentStatus, MongoCollection
 
 _OBJECT_ID = {"bsonType": "objectId"}
 _DATE = {"bsonType": "date"}
