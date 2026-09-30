@@ -1,4 +1,4 @@
-"""MongoDB collection schemas: JSON Schema validators and indexes.
+"""MongoDB collection schemas: JSON Schema validators, plus the indexes from indexes.py.
 
 `apply_schema` runs at startup. It creates missing collections and updates the validator of
 existing ones, so editing a schema here takes effect on the next restart.
@@ -6,11 +6,11 @@ existing ones, so editing a schema here takes effect on the next restart.
 
 from typing import Any
 
-from pymongo import ASCENDING, IndexModel
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import CollectionInvalid
 
 from app.core.enums import DocumentStatus, MongoCollection
+from app.db.indexes import INDEXES, sync_indexes
 
 _OBJECT_ID = {"bsonType": "objectId"}
 _DATE = {"bsonType": "date"}
@@ -71,21 +71,6 @@ VALIDATORS: dict[MongoCollection, dict[str, Any]] = {
     ),
 }
 
-INDEXES: dict[MongoCollection, list[IndexModel]] = {
-    MongoCollection.COLLECTIONS: [
-        IndexModel([("name", ASCENDING)], unique=True, name="uniq_name"),
-    ],
-    MongoCollection.DOCUMENTS: [
-        IndexModel([("collection_id", ASCENDING)], name="by_collection"),
-    ],
-    MongoCollection.CHUNKS: [
-        IndexModel([("collection_id", ASCENDING)], name="by_collection"),
-        IndexModel(
-            [("document_id", ASCENDING), ("chunk_index", ASCENDING)], name="by_document_order"
-        ),
-    ],
-}
-
 
 async def apply_schema(db: AsyncDatabase) -> None:
     existing = set(await db.list_collection_names())
@@ -98,4 +83,4 @@ async def apply_schema(db: AsyncDatabase) -> None:
                 await db.command("collMod", name, **options)
         else:
             await db.command("collMod", name, **options)
-        await db[name].create_indexes(INDEXES[name])
+        await sync_indexes(db[name], INDEXES[name])

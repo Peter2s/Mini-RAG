@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 from pymongo.errors import WriteError
 
 from app.core.enums import MongoCollection
-from app.db.schema import INDEXES, VALIDATORS
+from app.db.indexes import INDEXES
+from app.db.schema import VALIDATORS
 from app.main import create_app
 
 NOW = datetime.now(UTC)
@@ -25,7 +26,7 @@ def test_startup_creates_collections_validators_and_indexes(client, mongo_db):
         assert collections_by_name[name]["options"]["validator"] == validator
         assert collections_by_name[name]["options"]["validationAction"] == "error"
         index_names = set(mongo_db[name].index_information())
-        assert {index.document["name"] for index in INDEXES[name]} <= index_names
+        assert index_names == {"_id_"} | {index.document["name"] for index in INDEXES[name]}
     assert mongo_db[MongoCollection.COLLECTIONS].index_information()["uniq_name"]["unique"] is True
 
 
