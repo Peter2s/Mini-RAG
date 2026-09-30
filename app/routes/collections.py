@@ -22,10 +22,10 @@ async def list_collections(
 
 
 @router.get("/{collection_id}", response_model=CollectionRead)
-async def get_collection(collection_id: int, service: CollectionServiceDep):
+async def get_collection(collection_id: str, service: CollectionServiceDep):
     return await service.get(collection_id)
 
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_collection(collection_id: int, service: CollectionServiceDep) -> None:
+async def delete_collection(collection_id: str, service: CollectionServiceDep) -> None:
     await service.delete(collection_id)

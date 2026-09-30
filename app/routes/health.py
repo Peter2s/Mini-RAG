@@ -2,17 +2,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.db import Database
-from app.dependencies import SettingsDep, get_database
+from app.db import MongoDatabase
+from app.dependencies import SettingsDep, get_mongo
 from app.schemas.common import HealthResponse
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(settings: SettingsDep, db: Annotated[Database, Depends(get_database)]):
+async def health(settings: SettingsDep, mongo: Annotated[MongoDatabase, Depends(get_mongo)]):
     try:
-        await db.ping()
+        await mongo.ping()
         database = "ok"
     except Exception:
         database = "unavailable"

@@ -1,7 +1,12 @@
+import os
+import uuid
 from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from pymongo import MongoClient
+from pymongo.database import Database
+from pymongo.errors import PyMongoError
 
 from app.core.config import Settings
 from app.dependencies import get_llm_provider
@@ -25,11 +30,35 @@ class FakeLLM:
         return None
 
 
+@pytest.fixture(scope="session")
+def mongo_url() -> str:
+    """MongoDB for tests: MONGODB_TEST_URL, else MONGODB_URL from the environment or `.env`."""
+    url = os.environ.get("MONGODB_TEST_URL") or Settings().mongodb_url.get_secret_value()
+    try:
+        with MongoClient(url, serverSelectionTimeoutMS=2000) as client:
+            client.admin.command("ping")
+    except PyMongoError as exc:
+        pytest.skip(
+            f"MongoDB is not reachable ({exc.__class__.__name__}). Run: docker compose up -d"
+        )
+    return url
+
+
 @pytest.fixture
-def settings(tmp_path) -> Settings:
+def mongo_db(mongo_url: str) -> Iterator[Database]:
+    """A throwaway database per test, dropped afterwards. Used for direct assertions."""
+    name = f"mini_rag_test_{uuid.uuid4().hex[:12]}"
+    with MongoClient(mongo_url, tz_aware=True) as client:
+        yield client[name]
+        client.drop_database(name)
+
+
+@pytest.fixture
+def settings(tmp_path, mongo_url: str, mongo_db: Database) -> Settings:
     return Settings(
         _env_file=None,
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        mongodb_url=mongo_url,
+        mongodb_database=mongo_db.name,
         upload_dir=tmp_path / "uploads",
         max_upload_size_mb=1,
         embedding_provider="hash",

@@ -42,11 +42,11 @@ class DocumentService:
         self.chunks = chunks
         self.files = files
 
-    async def _ensure_collection(self, collection_id: int) -> None:
+    async def _ensure_collection(self, collection_id: str) -> None:
         if await self.collections.get(collection_id) is None:
             raise NotFoundError(f"Collection {collection_id} not found")
 
-    async def upload(self, collection_id: int, upload: UploadFile) -> Document:
+    async def upload(self, collection_id: str, upload: UploadFile) -> Document:
         await self._ensure_collection(collection_id)
 
         filename = Path(upload.filename or "").name
@@ -85,13 +85,13 @@ class DocumentService:
             await self.files.delete(path)
             raise
 
-    async def get(self, collection_id: int, document_id: int) -> Document:
+    async def get(self, collection_id: str, document_id: str) -> Document:
         document = await self.documents.get_for_collection(collection_id, document_id)
         if document is None:
             raise NotFoundError(f"Document {document_id} not found in collection {collection_id}")
         return document
 
-    async def list(self, collection_id: int, offset: int, limit: int) -> Page[DocumentRead]:
+    async def list(self, collection_id: str, offset: int, limit: int) -> Page[DocumentRead]:
         await self._ensure_collection(collection_id)
         items = await self.documents.list_by_collection(collection_id, offset=offset, limit=limit)
         return Page[DocumentRead](
@@ -101,20 +101,21 @@ class DocumentService:
             limit=limit,
         )
 
-    async def delete(self, collection_id: int, document_id: int) -> None:
+    async def delete(self, collection_id: str, document_id: str) -> None:
         document = await self.get(collection_id, document_id)
         stored_path = document.stored_path
-        await self.documents.delete(document)  # chunks cascade
+        await self.chunks.delete_by_document(document_id)
+        await self.documents.delete(document)
         await self.files.delete(stored_path)
 
     async def process(
-        self, collection_id: int, document_id: int, options: ProcessRequest
+        self, collection_id: str, document_id: str, options: ProcessRequest
     ) -> ProcessResult:
         document = await self.get(collection_id, document_id)
         return await self._process_document(document, *self._chunk_params(options))
 
     async def process_collection(
-        self, collection_id: int, options: ProcessRequest
+        self, collection_id: str, options: ProcessRequest
     ) -> ProcessCollectionResult:
         await self._ensure_collection(collection_id)
         chunk_size, chunk_overlap = self._chunk_params(options)

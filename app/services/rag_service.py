@@ -33,11 +33,11 @@ class RagService:
         self.embedder = embedder
         self.llm = llm
 
-    async def _ensure_collection(self, collection_id: int) -> None:
+    async def _ensure_collection(self, collection_id: str) -> None:
         if await self.collections.get(collection_id) is None:
             raise NotFoundError(f"Collection {collection_id} not found")
 
-    async def index(self, collection_id: int, reset: bool = False) -> IndexResult:
+    async def index(self, collection_id: str, reset: bool = False) -> IndexResult:
         """Embed chunks that have no embedding yet (or all chunks when `reset` is set)."""
         await self._ensure_collection(collection_id)
         pending = await self.chunks.list_for_indexing(collection_id, only_missing=not reset)
@@ -56,12 +56,12 @@ class RagService:
             total_chunks=await self.chunks.count_by_collection(collection_id),
         )
 
-    async def search(self, collection_id: int, query: str, top_k: int) -> SearchResponse:
+    async def search(self, collection_id: str, query: str, top_k: int) -> SearchResponse:
         await self._ensure_collection(collection_id)
         matches = await self._retrieve(collection_id, query, top_k)
         return SearchResponse(query=query, results=[_to_hit(m) for m in matches])
 
-    async def answer(self, collection_id: int, question: str, top_k: int) -> AnswerResponse:
+    async def answer(self, collection_id: str, question: str, top_k: int) -> AnswerResponse:
         await self._ensure_collection(collection_id)
         matches = await self._retrieve(collection_id, question, top_k)
         if not matches:
@@ -80,7 +80,7 @@ class RagService:
             sources=[_to_hit(m) for m in matches],
         )
 
-    async def _retrieve(self, collection_id: int, query: str, top_k: int) -> list[VectorMatch]:
+    async def _retrieve(self, collection_id: str, query: str, top_k: int) -> list[VectorMatch]:
         [query_vector] = await self.embedder.embed([query], input_type="query")
         try:
             return await self.vectors.search(collection_id, query_vector, top_k)

@@ -19,8 +19,11 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     debug: bool = False
 
-    # Storage
-    database_url: str = "sqlite+aiosqlite:///./data/mini_rag.db"
+    # MongoDB
+    mongodb_url: SecretStr = SecretStr("mongodb://localhost:27017")
+    mongodb_database: str = "mini_rag"
+
+    # File storage
     upload_dir: Path = Path("./data/uploads")
     max_upload_size_mb: int = 10
     allowed_extensions: list[FileExtension] = list(FileExtension)

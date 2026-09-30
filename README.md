@@ -6,11 +6,12 @@ from your own documents.
 
 ## Quick start
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
+Requires [uv](https://docs.astral.sh/uv/), Python 3.12+, and Docker.
 
 ```bash
 uv sync
-cp .env.example .env        # then set ANTHROPIC_API_KEY
+cp .env.example .env        # set MONGO_ROOT_PASSWORD (and the same in MONGODB_URL), ANTHROPIC_API_KEY
+docker compose up -d        # MongoDB on localhost:27017
 uv run uvicorn app.main:app --reload
 ```
 
@@ -18,25 +19,28 @@ Interactive docs: http://localhost:8000/docs
 
 ## Workflow
 
+IDs are MongoDB ObjectIds. Use the `id` from the create response in the later calls.
+
 ```bash
-# 1. Create a collection
-curl -X POST localhost:8000/api/v1/collections -H 'Content-Type: application/json' \
-  -d '{"name": "handbook"}'
+# 1. Create a collection and keep its id
+COLLECTION=$(curl -s -X POST localhost:8000/api/v1/collections \
+  -H 'Content-Type: application/json' -d '{"name": "handbook"}' \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])')
 
 # 2. Upload documents (.txt, .md, .pdf)
-curl -X POST localhost:8000/api/v1/collections/1/documents -F file=@handbook.pdf
+curl -X POST localhost:8000/api/v1/collections/$COLLECTION/documents -F file=@handbook.pdf
 
 # 3. Extract text and split into chunks
-curl -X POST localhost:8000/api/v1/collections/1/documents/process
+curl -X POST localhost:8000/api/v1/collections/$COLLECTION/documents/process
 
 # 4. Embed the chunks
-curl -X POST localhost:8000/api/v1/collections/1/index
+curl -X POST localhost:8000/api/v1/collections/$COLLECTION/index
 
 # 5. Search, or ask a question
-curl -X POST localhost:8000/api/v1/collections/1/search -H 'Content-Type: application/json' \
-  -d '{"query": "vacation policy", "top_k": 5}'
-curl -X POST localhost:8000/api/v1/collections/1/answer -H 'Content-Type: application/json' \
-  -d '{"question": "How many vacation days do I get?"}'
+curl -X POST localhost:8000/api/v1/collections/$COLLECTION/search \
+  -H 'Content-Type: application/json' -d '{"query": "vacation policy", "top_k": 5}'
+curl -X POST localhost:8000/api/v1/collections/$COLLECTION/answer \
+  -H 'Content-Type: application/json' -d '{"question": "How many vacation days do I get?"}'
 ```
 
 ## API
@@ -65,21 +69,23 @@ app/
 ├── main.py              # app factory + lifespan (DB, embedder, LLM)
 ├── dependencies.py      # FastAPI Depends wiring
 ├── core/                # settings, domain exceptions, logging
-├── db/                  # SQLAlchemy base + async engine/session
-├── models/              # ORM tables: Collection, Document, Chunk
+├── db/                  # MongoDB client + collection schemas (validators, indexes)
+├── models/              # MongoDB documents: Collection, Document, Chunk
 ├── schemas/             # Pydantic request/response models
 ├── routes/              # HTTP layer only: validation and status codes
 ├── services/            # business logic: CollectionService, DocumentService, RagService
-├── repositories/        # persistence: SQL repos, vector search, file storage
+├── repositories/        # persistence: MongoDB repos, vector search, file storage
 ├── providers/           # external models: embeddings (hash, Voyage), LLM (Claude)
 └── utils/               # LangChain loaders and RecursiveCharacterTextSplitter
 ```
 
-- **Storage** is SQLite through async SQLAlchemy. Change `DATABASE_URL` to use Postgres
-  (install `asyncpg`). Tables are created on startup; add Alembic when the schema starts moving.
-- **Vector search** is brute-force cosine similarity over embeddings stored in the `chunks`
-  table. That is fine for thousands of chunks per collection. For more, implement the
-  `VectorRepository` protocol against Qdrant or pgvector.
+- **Storage** is MongoDB through PyMongo's async client, run locally with `docker compose`.
+  The `collections`, `documents`, and `chunks` collections each have a strict JSON Schema
+  validator and indexes, defined in `app/db/schema.py` and applied on every startup.
+  Deleting a collection or document also deletes its documents and chunks.
+- **Vector search** is brute-force cosine similarity over embeddings stored in `chunks`.
+  That is fine for thousands of chunks per collection. For more, implement the
+  `VectorRepository` protocol against Atlas Vector Search or Qdrant.
 - **Embeddings** default to `hash`, an offline lexical embedder that needs no API key. It is
   meant for development and tests. For real semantic search, run `uv sync --extra voyage` and set
   `EMBEDDING_PROVIDER=voyage` plus `VOYAGE_API_KEY`, then re-index with `{"reset": true}`.
@@ -97,4 +103,6 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-Tests replace Claude with a fake provider, so they run offline.
+Tests replace Claude with a fake provider. Database tests need MongoDB running
+(`docker compose up -d`); each test uses its own throwaway database. They connect with
+`MONGODB_TEST_URL` if set, otherwise `MONGODB_URL`, and are skipped when MongoDB is unreachable.

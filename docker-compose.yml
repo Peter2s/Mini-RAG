@@ -1,0 +1,23 @@
+services:
+  mongodb:
+    # 8.2 runs on Docker Desktop's current Linux kernel. mongo:8.0 and mongo:latest crash on
+    # kernels 6.19+ (https://jira.mongodb.org/browse/SERVER-121912).
+    image: mongo:8.2
+    container_name: mini-rag-mongodb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mongodb_data:

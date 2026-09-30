@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    collection_id: int
+    id: str
+    collection_id: str
     filename: str
     content_type: str | None
     size_bytes: int
@@ -33,7 +33,7 @@ class ProcessRequest(BaseModel):
 
 
 class ProcessResult(BaseModel):
-    document_id: int
+    document_id: str
     status: str
     pages_loaded: int = 0
     chunks_created: int
@@ -41,7 +41,7 @@ class ProcessResult(BaseModel):
 
 
 class ProcessCollectionResult(BaseModel):
-    collection_id: int
+    collection_id: str
     documents_processed: int
     documents_failed: int
     chunks_created: int

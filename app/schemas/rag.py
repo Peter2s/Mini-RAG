@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 class VectorMatch:
     """A chunk returned by vector search, before it is shaped into an API response."""
 
-    chunk_id: int
-    document_id: int
+    chunk_id: str
+    document_id: str
     filename: str
     chunk_index: int
     text: str
@@ -22,7 +22,7 @@ class IndexRequest(BaseModel):
 
 
 class IndexResult(BaseModel):
-    collection_id: int
+    collection_id: str
     chunks_indexed: int
     total_chunks: int
 
@@ -33,8 +33,8 @@ class SearchRequest(BaseModel):
 
 
 class SearchHit(BaseModel):
-    chunk_id: int
-    document_id: int
+    chunk_id: str
+    document_id: str
     filename: str
     chunk_index: int
     text: str

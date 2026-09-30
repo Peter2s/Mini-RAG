@@ -1,20 +1,21 @@
-from collections.abc import Sequence
+from pymongo.errors import DuplicateKeyError
 
-from sqlalchemy import select
-
+from app.core.exceptions import ConflictError
 from app.models import Collection
-from app.repositories.base import BaseRepository
+from app.repositories.base import MongoRepository
 
 
-class CollectionRepository(BaseRepository[Collection]):
+class CollectionRepository(MongoRepository[Collection]):
     model = Collection
 
     async def get_by_name(self, name: str) -> Collection | None:
-        result = await self.session.execute(select(Collection).where(Collection.name == name))
-        return result.scalar_one_or_none()
+        return await self._find_one({"name": name})
 
-    async def list(self, offset: int = 0, limit: int = 50) -> Sequence[Collection]:
-        result = await self.session.execute(
-            select(Collection).order_by(Collection.id).offset(offset).limit(limit)
-        )
-        return result.scalars().all()
+    async def add(self, obj: Collection) -> Collection:
+        try:
+            return await super().add(obj)
+        except DuplicateKeyError as exc:  # unique index on name
+            raise ConflictError(f"Collection '{obj.name}' already exists") from exc
+
+    async def list(self, offset: int = 0, limit: int = 50) -> list[Collection]:
+        return await self._find({}, skip=offset, limit=limit)

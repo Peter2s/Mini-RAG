@@ -14,10 +14,10 @@ class FileRepository:
     def __init__(self, upload_dir: Path) -> None:
         self.upload_dir = upload_dir
 
-    def collection_dir(self, collection_id: int) -> Path:
+    def collection_dir(self, collection_id: str) -> Path:
         return self.upload_dir / str(collection_id)
 
-    async def save(self, collection_id: int, filename: str, data: bytes) -> Path:
+    async def save(self, collection_id: str, filename: str, data: bytes) -> Path:
         safe_name = _UNSAFE_CHARS.sub("_", Path(filename).name).strip("._") or "file"
         target = self.collection_dir(collection_id) / f"{uuid.uuid4().hex}_{safe_name}"
 
@@ -31,7 +31,7 @@ class FileRepository:
     async def delete(self, path: str | Path) -> None:
         await run_in_threadpool(Path(path).unlink, missing_ok=True)
 
-    async def delete_collection(self, collection_id: int) -> None:
+    async def delete_collection(self, collection_id: str) -> None:
         await run_in_threadpool(
             shutil.rmtree, self.collection_dir(collection_id), ignore_errors=True
         )

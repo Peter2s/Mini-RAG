@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
-from app.db import Database
+from app.db import MongoDatabase
 from app.providers.embeddings import build_embedding_provider
 from app.providers.llm import AnthropicLLMProvider
 from app.routes import api_router
@@ -17,9 +17,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    db = Database(settings.database_url, echo=settings.debug)
-    await db.create_all()
-    app.state.db = db
+    mongo = MongoDatabase(settings.mongodb_url.get_secret_value(), settings.mongodb_database)
+    await mongo.init()
+    app.state.mongo = mongo
     app.state.embedder = build_embedding_provider(settings)
     app.state.llm = AnthropicLLMProvider(settings)
     try:
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         await app.state.llm.aclose()
         await app.state.embedder.aclose()
-        await db.dispose()
+        await mongo.close()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

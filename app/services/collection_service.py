@@ -1,13 +1,26 @@
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models import Collection
-from app.repositories import CollectionRepository, FileRepository
+from app.repositories import (
+    ChunkRepository,
+    CollectionRepository,
+    DocumentRepository,
+    FileRepository,
+)
 from app.schemas.collection import CollectionCreate, CollectionRead
 from app.schemas.common import Page
 
 
 class CollectionService:
-    def __init__(self, collections: CollectionRepository, files: FileRepository) -> None:
+    def __init__(
+        self,
+        collections: CollectionRepository,
+        documents: DocumentRepository,
+        chunks: ChunkRepository,
+        files: FileRepository,
+    ) -> None:
         self.collections = collections
+        self.documents = documents
+        self.chunks = chunks
         self.files = files
 
     async def create(self, data: CollectionCreate) -> Collection:
@@ -16,7 +29,7 @@ class CollectionService:
             raise ConflictError(f"Collection '{name}' already exists")
         return await self.collections.add(Collection(name=name, description=data.description))
 
-    async def get(self, collection_id: int) -> Collection:
+    async def get(self, collection_id: str) -> Collection:
         collection = await self.collections.get(collection_id)
         if collection is None:
             raise NotFoundError(f"Collection {collection_id} not found")
@@ -31,8 +44,10 @@ class CollectionService:
             limit=limit,
         )
 
-    async def delete(self, collection_id: int) -> None:
+    async def delete(self, collection_id: str) -> None:
         collection = await self.get(collection_id)
-        # Documents and chunks are removed by ON DELETE CASCADE.
+        # MongoDB has no cascading deletes: remove children first, then the collection.
+        await self.chunks.delete_by_collection(collection_id)
+        await self.documents.delete_by_collection(collection_id)
         await self.collections.delete(collection)
         await self.files.delete_collection(collection_id)

@@ -1,26 +1,19 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from pydantic import Field
 
-from app.db.base import Base, utcnow
+from app.models.base import MongoModel, ObjectIdStr, utcnow
 
 
-class Chunk(Base):
-    __tablename__ = "chunks"
+class Chunk(MongoModel):
+    collection_name: ClassVar[str] = "chunks"
+    object_id_fields: ClassVar[tuple[str, ...]] = ("collection_id", "document_id")
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    collection_id: Mapped[int] = mapped_column(
-        ForeignKey("collections.id", ondelete="CASCADE"), index=True
-    )
-    document_id: Mapped[int] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), index=True
-    )
-    chunk_index: Mapped[int] = mapped_column(Integer)
-    text: Mapped[str] = mapped_column(Text)
-    # Loader metadata for the page this chunk came from, e.g. {"page": 0, "page_label": "1"}.
-    chunk_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
-    # Stored as a JSON array of floats; NULL until the chunk is indexed.
-    embedding: Mapped[list[float] | None] = mapped_column(JSON(none_as_null=True), default=None)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    collection_id: ObjectIdStr
+    document_id: ObjectIdStr
+    chunk_index: int
+    text: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    embedding: list[float] | None = None  # None until the chunk is indexed
+    created_at: datetime = Field(default_factory=utcnow)

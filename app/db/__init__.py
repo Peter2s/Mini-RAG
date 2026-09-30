@@ -1,4 +1,4 @@
-from app.db.base import Base
-from app.db.session import Database
+from app.db.mongo import MongoDatabase
+from app.db.schema import apply_schema
 
-__all__ = ["Base", "Database"]
+__all__ = ["MongoDatabase", "apply_schema"]

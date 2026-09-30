@@ -1,9 +1,7 @@
 from enum import StrEnum
+from typing import ClassVar
 
-from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.db.base import Base, TimestampMixin
+from app.models.base import ObjectIdStr, TimestampedModel
 
 
 class DocumentStatus(StrEnum):
@@ -12,16 +10,14 @@ class DocumentStatus(StrEnum):
     FAILED = "failed"
 
 
-class Document(TimestampMixin, Base):
-    __tablename__ = "documents"
+class Document(TimestampedModel):
+    collection_name: ClassVar[str] = "documents"
+    object_id_fields: ClassVar[tuple[str, ...]] = ("collection_id",)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    collection_id: Mapped[int] = mapped_column(
-        ForeignKey("collections.id", ondelete="CASCADE"), index=True
-    )
-    filename: Mapped[str] = mapped_column(String(255))
-    stored_path: Mapped[str] = mapped_column(String(1024))
-    content_type: Mapped[str | None] = mapped_column(String(255), default=None)
-    size_bytes: Mapped[int] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(20), default=DocumentStatus.UPLOADED)
-    error: Mapped[str | None] = mapped_column(Text, default=None)
+    collection_id: ObjectIdStr
+    filename: str
+    stored_path: str
+    content_type: str | None = None
+    size_bytes: int
+    status: DocumentStatus = DocumentStatus.UPLOADED
+    error: str | None = None

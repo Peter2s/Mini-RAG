@@ -14,14 +14,14 @@ router = APIRouter(prefix="/collections/{collection_id}/documents", tags=["docum
 
 @router.post("", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    collection_id: int, service: DocumentServiceDep, file: UploadFile = File(...)
+    collection_id: str, service: DocumentServiceDep, file: UploadFile = File(...)
 ):
     return await service.upload(collection_id, file)
 
 
 @router.get("", response_model=Page[DocumentRead])
 async def list_documents(
-    collection_id: int,
+    collection_id: str,
     service: DocumentServiceDep,
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -31,21 +31,21 @@ async def list_documents(
 
 @router.post("/process", response_model=ProcessCollectionResult)
 async def process_all_documents(
-    collection_id: int, service: DocumentServiceDep, options: ProcessRequest | None = None
+    collection_id: str, service: DocumentServiceDep, options: ProcessRequest | None = None
 ):
     """Extract text from every document in the collection and split it into chunks."""
     return await service.process_collection(collection_id, options or ProcessRequest())
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
-async def get_document(collection_id: int, document_id: int, service: DocumentServiceDep):
+async def get_document(collection_id: str, document_id: str, service: DocumentServiceDep):
     return await service.get(collection_id, document_id)
 
 
 @router.post("/{document_id}/process", response_model=ProcessResult)
 async def process_document(
-    collection_id: int,
-    document_id: int,
+    collection_id: str,
+    document_id: str,
     service: DocumentServiceDep,
     options: ProcessRequest | None = None,
 ):
@@ -55,6 +55,6 @@ async def process_document(
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
-    collection_id: int, document_id: int, service: DocumentServiceDep
+    collection_id: str, document_id: str, service: DocumentServiceDep
 ) -> None:
     await service.delete(collection_id, document_id)
