@@ -1,66 +1,52 @@
-import re
+"""Chunking built on LangChain's RecursiveCharacterTextSplitter."""
 
-# Preferred break points, strongest first.
-_SEPARATORS = ("\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ")
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import Any
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.utils.file_loader import LoadedPage
+
 _MANY_NEWLINES = re.compile(r"\n{3,}")
 _SPACES = re.compile(r"[ \t\f\v]+")
 
 
+@dataclass(frozen=True, slots=True)
+class TextChunk:
+    text: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 def normalize_text(text: str) -> str:
+    """Collapse runs of spaces and blank lines, which PDF extraction often produces."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = _SPACES.sub(" ", text)
     text = _MANY_NEWLINES.sub("\n\n", text)
     return text.strip()
 
 
-def split_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
-    """Split text into chunks of at most `chunk_size` characters with `chunk_overlap` overlap.
-
-    Chunks end on the strongest natural boundary (paragraph, line, sentence, word) found in
-    the second half of the window, so they rarely cut words or sentences in half.
-    """
+def build_splitter(chunk_size: int, chunk_overlap: int) -> RecursiveCharacterTextSplitter:
+    """Split on paragraphs, then lines, then words, then characters, as needed to fit."""
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
     if not 0 <= chunk_overlap < chunk_size:
         raise ValueError("chunk_overlap must be >= 0 and smaller than chunk_size")
-
-    text = normalize_text(text)
-    chunks: list[str] = []
-    start, length = 0, len(text)
-
-    while start < length:
-        end = min(start + chunk_size, length)
-        if end < length:
-            end = _find_break(text, start, end)
-
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        if end >= length:
-            break
-
-        next_start = end - chunk_overlap
-        if next_start <= start:
-            next_start = end
-        start = _snap_to_word_start(text, next_start, end)
-
-    return chunks
+    return RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        add_start_index=True,  
+    )
 
 
-def _find_break(text: str, start: int, end: int) -> int:
-    min_end = start + (end - start) // 2
-    for separator in _SEPARATORS:
-        index = text.rfind(separator, min_end, end)
-        if index != -1:
-            return index + len(separator)
-    return end
-
-
-def _snap_to_word_start(text: str, pos: int, limit: int) -> int:
-    """Move `pos` forward to the start of the next word so overlaps don't begin mid-word."""
-    if pos == 0 or text[pos - 1].isspace():
-        return pos
-    for i in range(pos, limit):
-        if text[i].isspace():
-            return i + 1
-    return pos
+def split_pages(
+    pages: Sequence[LoadedPage], chunk_size: int, chunk_overlap: int
+) -> list[TextChunk]:
+    """Split each page separately. Every chunk gets a copy of its page's metadata."""
+    splitter = build_splitter(chunk_size, chunk_overlap)
+    documents = splitter.create_documents(
+        [normalize_text(page.content) for page in pages],
+        metadatas=[page.metadata for page in pages],
+    )
+    return [TextChunk(text=doc.page_content, metadata=doc.metadata) for doc in documents]

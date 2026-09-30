@@ -16,6 +16,7 @@ dependencies = [
     "pypdf>=4.2",  # required by LangChain's PyPDFLoader
     "anthropic>=1.0",
     "langchain-community>=0.4.2",
+    "langchain-text-splitters>=1.1.2",
 ]
 
 [project.optional-dependencies]

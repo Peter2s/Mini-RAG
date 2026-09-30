@@ -72,7 +72,7 @@ app/
 ├── services/            # business logic: CollectionService, DocumentService, RagService
 ├── repositories/        # persistence: SQL repos, vector search, file storage
 ├── providers/           # external models: embeddings (hash, Voyage), LLM (Claude)
-└── utils/               # text splitter, LangChain document loaders
+└── utils/               # LangChain loaders and RecursiveCharacterTextSplitter
 ```
 
 - **Storage** is SQLite through async SQLAlchemy. Change `DATABASE_URL` to use Postgres

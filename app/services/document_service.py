@@ -23,7 +23,7 @@ from app.schemas.document import (
     ProcessResult,
 )
 from app.utils.file_loader import load_pages
-from app.utils.text_splitter import split_text
+from app.utils.text_splitter import split_pages
 
 logger = logging.getLogger(__name__)
 
@@ -148,11 +148,10 @@ class DocumentService:
     ) -> ProcessResult:
         try:
             pages = await run_in_threadpool(load_pages, Path(document.stored_path))
-            # Split page by page so every chunk keeps the metadata of the page it came from.
+            # Pages are split separately, so every chunk keeps the metadata of its page.
             chunks = [
-                NewChunk(text=text, metadata=page.metadata)
-                for page in pages
-                for text in split_text(page.content, chunk_size, chunk_overlap)
+                NewChunk(text=chunk.text, metadata=chunk.metadata)
+                for chunk in split_pages(pages, chunk_size, chunk_overlap)
             ]
             if not chunks:
                 raise ValueError("No text could be extracted from the document")
