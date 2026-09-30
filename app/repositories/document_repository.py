@@ -1,9 +1,28 @@
+from pymongo.errors import DuplicateKeyError
+
+from app.core.exceptions import ConflictError
 from app.models import Document, to_object_id
 from app.repositories.base import MongoRepository
 
 
 class DocumentRepository(MongoRepository[Document]):
     model = Document
+
+    async def add(self, entity: Document) -> Document:
+        try:
+            return await super().add(entity)
+        except DuplicateKeyError as error: 
+            raise ConflictError(
+                "A file with the same content is already in this collection"
+            ) from error
+
+    async def get_by_content_hash(self, collection_id: str, content_hash: str) -> Document | None:
+        collection_object_id = to_object_id(collection_id)
+        if collection_object_id is None:
+            return None
+        return await self._find_one(
+            {"collection_id": collection_object_id, "content_hash": content_hash}
+        )
 
     async def get_for_collection(self, collection_id: str, document_id: str) -> Document | None:
         collection_object_id, document_object_id = (

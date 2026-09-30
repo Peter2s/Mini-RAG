@@ -30,8 +30,12 @@ INDEXES: dict[MongoCollection, list[IndexModel]] = {
         IndexModel([("name", ASCENDING)], name="uniq_name", unique=True),
     ],
     MongoCollection.DOCUMENTS: [
-        # list/count/delete a collection's documents; listing is sorted by _id (paginated).
         IndexModel([("collection_id", ASCENDING), ("_id", ASCENDING)], name="collection_id_order"),
+        IndexModel(
+            [("collection_id", ASCENDING), ("content_hash", ASCENDING)],
+            name="uniq_collection_content_hash",
+            unique=True,
+        ),
     ],
     MongoCollection.CHUNKS: [
         # Chunks to embed (sorted by _id), vector search candidates, count/delete by collection.

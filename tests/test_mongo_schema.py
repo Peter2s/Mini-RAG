@@ -58,7 +58,23 @@ def test_schema_can_be_applied_again_on_restart(client, settings):
                 "stored_path": "/tmp/a.txt",
                 "content_type": None,
                 "size_bytes": 1,
+                "content_hash": "0" * 64,
                 "status": "bogus",
+                "error": None,
+                "created_at": NOW,
+                "updated_at": NOW,
+            },
+        ),
+        (
+            MongoCollection.DOCUMENTS,
+            {
+                "collection_id": ObjectId(),
+                "filename": "a.txt",
+                "stored_path": "/tmp/a.txt",
+                "content_type": None,
+                "size_bytes": 1,
+                "content_hash": "not-a-sha256",
+                "status": "uploaded",
                 "error": None,
                 "created_at": NOW,
                 "updated_at": NOW,
@@ -98,7 +114,8 @@ def test_validator_rejects_invalid_documents(client, mongo_db, collection, docum
 def _ingest(client, collection_id: str) -> None:
     base = f"/api/v1/collections/{collection_id}"
     for name in ("a.txt", "b.txt"):
-        client.post(f"{base}/documents", files={"file": (name, b"some text " * 50, "text/plain")})
+        content = f"{name} has some text. ".encode() * 20  # distinct content per file
+        client.post(f"{base}/documents", files={"file": (name, content, "text/plain")})
     client.post(f"{base}/documents/process")
     client.post(f"{base}/index")
 

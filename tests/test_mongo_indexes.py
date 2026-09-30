@@ -49,13 +49,22 @@ def _assert_uses_index(cursor, index_name: str) -> None:
 def ingested(client, collection) -> dict[str, ObjectId]:
     base = f"/api/v1/collections/{collection['id']}"
     for name in ("a.txt", "b.txt"):
-        client.post(f"{base}/documents", files={"file": (name, b"some text " * 50, "text/plain")})
+        content = f"{name} has some text. ".encode() * 20  # distinct content per file
+        client.post(f"{base}/documents", files={"file": (name, content, "text/plain")})
     client.post(f"{base}/documents/process")
     documents = client.get(f"{base}/documents").json()["items"]
     return {
         "collection": ObjectId(collection["id"]),
         "document": ObjectId(documents[0]["id"]),
     }
+
+
+def test_duplicate_check_by_content_hash(mongo_db, ingested):
+    content_hash = mongo_db[MongoCollection.DOCUMENTS].find_one()["content_hash"]
+    cursor = mongo_db[MongoCollection.DOCUMENTS].find(
+        {"collection_id": ingested["collection"], "content_hash": content_hash}
+    )
+    _assert_uses_index(cursor, "uniq_collection_content_hash")
 
 
 def test_collection_lookup_by_name(mongo_db, ingested):

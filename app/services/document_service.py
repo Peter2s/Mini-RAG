@@ -6,7 +6,12 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 from app.core.enums import DocumentStatus, FileExtension
-from app.core.exceptions import BadRequestError, NotFoundError, PayloadTooLargeError
+from app.core.exceptions import (
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
+    PayloadTooLargeError,
+)
 from app.models import Document
 from app.repositories import (
     ChunkRepository,
@@ -22,6 +27,7 @@ from app.schemas.document import (
     ProcessResult,
 )
 from app.utils.file_loader import load_pages
+from app.utils.hashing import sha256_hex
 from app.utils.text_splitter import split_pages
 
 logger = logging.getLogger(__name__)
@@ -70,7 +76,16 @@ class DocumentService:
         if not data:
             raise BadRequestError("Uploaded file is empty")
 
-        path = await self.files.save(collection_id, filename, data)
+        content_hash = sha256_hex(data)
+        existing = await self.documents.get_by_content_hash(collection_id, content_hash)
+        if existing is not None:
+            raise ConflictError(
+                f"A file with the same content is already in this collection: "
+                f"'{existing.filename}' (document {existing.id})"
+            )
+
+        # Stored under its content hash, so the name on disk never depends on the upload name.
+        path = await self.files.save(collection_id, f"{content_hash}{extension}", data)
         try:
             return await self.documents.add(
                 Document(
@@ -79,8 +94,11 @@ class DocumentService:
                     stored_path=str(path),
                     content_type=upload.content_type,
                     size_bytes=len(data),
+                    content_hash=content_hash,
                 )
             )
+        except ConflictError:
+            raise
         except Exception:
             await self.files.delete(path)
             raise

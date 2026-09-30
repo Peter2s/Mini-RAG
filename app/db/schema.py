@@ -50,6 +50,7 @@ VALIDATORS: dict[MongoCollection, dict[str, Any]] = {
             "stored_path": _STRING,
             "content_type": _NULLABLE_STRING,
             "size_bytes": _NON_NEGATIVE_INT,
+            "content_hash": {"bsonType": "string", "pattern": "^[0-9a-f]{64}$"},
             "status": {"enum": [status.value for status in DocumentStatus]},
             "error": _NULLABLE_STRING,
             "created_at": _DATE,

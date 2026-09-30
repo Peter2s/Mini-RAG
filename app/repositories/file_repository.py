@@ -1,15 +1,14 @@
-import re
 import shutil
-import uuid
 from pathlib import Path
 
 from starlette.concurrency import run_in_threadpool
 
-_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
-
 
 class FileRepository:
-    """Stores uploaded files on local disk under `<upload_dir>/<collection_id>/`."""
+    """Stores uploaded files on local disk under `<upload_dir>/<collection_id>/<stored_name>`.
+
+    Callers name files by their content hash, so identical content maps to the same file.
+    """
 
     def __init__(self, upload_dir: Path) -> None:
         self.upload_dir = upload_dir
@@ -17,9 +16,10 @@ class FileRepository:
     def collection_dir(self, collection_id: str) -> Path:
         return self.upload_dir / str(collection_id)
 
-    async def save(self, collection_id: str, filename: str, data: bytes) -> Path:
-        safe_name = _UNSAFE_CHARS.sub("_", Path(filename).name).strip("._") or "file"
-        target = self.collection_dir(collection_id) / f"{uuid.uuid4().hex}_{safe_name}"
+    async def save(self, collection_id: str, stored_name: str, data: bytes) -> Path:
+        if not stored_name or Path(stored_name).name != stored_name:
+            raise ValueError(f"stored_name must be a plain file name, got {stored_name!r}")
+        target = self.collection_dir(collection_id) / stored_name
 
         def _write() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)

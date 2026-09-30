@@ -13,6 +13,7 @@ class DocumentRead(BaseModel):
     filename: str
     content_type: str | None
     size_bytes: int
+    content_hash: str
     status: DocumentStatus
     error: str | None
     created_at: datetime
