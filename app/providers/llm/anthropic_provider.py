@@ -17,12 +17,12 @@ class AnthropicLLMProvider:
     """Generates answers with Claude through the official Anthropic SDK."""
 
     def __init__(self, settings: Settings) -> None:
-        client_kwargs = {}
+        client_arguments = {}
         if settings.anthropic_api_key:
-            client_kwargs["api_key"] = settings.anthropic_api_key.get_secret_value()
+            client_arguments["api_key"] = settings.anthropic_api_key.get_secret_value()
         # Without an explicit key the SDK resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
         # or an `ant auth login` profile.
-        self._client = anthropic.AsyncAnthropic(**client_kwargs)
+        self._client = anthropic.AsyncAnthropic(**client_arguments)
         self._model = settings.llm_model
         self._max_tokens = settings.llm_max_tokens
         self._effort = settings.llm_effort
@@ -43,24 +43,24 @@ class AnthropicLLMProvider:
                 )
             else:
                 response = await self._client.messages.create(**request)
-        except anthropic.AuthenticationError as exc:
-            raise LLMError("Anthropic authentication failed. Check ANTHROPIC_API_KEY.") from exc
-        except anthropic.RateLimitError as exc:
-            raise LLMError("Anthropic rate limit reached. Retry later.") from exc
-        except anthropic.BadRequestError as exc:
-            raise LLMError(f"Anthropic rejected the request: {exc.message}") from exc
-        except anthropic.APIStatusError as exc:
-            raise LLMError(f"Anthropic API error ({exc.status_code}): {exc.message}") from exc
-        except anthropic.APIConnectionError as exc:
-            raise LLMError("Could not reach the Anthropic API.") from exc
-        except TypeError as exc:
+        except anthropic.AuthenticationError as error:
+            raise LLMError("Anthropic authentication failed. Check ANTHROPIC_API_KEY.") from error
+        except anthropic.RateLimitError as error:
+            raise LLMError("Anthropic rate limit reached. Retry later.") from error
+        except anthropic.BadRequestError as error:
+            raise LLMError(f"Anthropic rejected the request: {error.message}") from error
+        except anthropic.APIStatusError as error:
+            raise LLMError(f"Anthropic API error ({error.status_code}): {error.message}") from error
+        except anthropic.APIConnectionError as error:
+            raise LLMError("Could not reach the Anthropic API.") from error
+        except TypeError as error:
             # The SDK raises TypeError when no API key, auth token, or profile is configured.
-            if "authentication method" not in str(exc):
+            if "authentication method" not in str(error):
                 raise
             raise LLMError(
                 "No Anthropic credentials configured. "
                 "Set ANTHROPIC_API_KEY or run `ant auth login`."
-            ) from exc
+            ) from error
 
         if response.stop_reason == "refusal":
             category = getattr(response.stop_details, "category", None)

@@ -15,26 +15,26 @@ class MongoRepository[ModelT: MongoModel]:
     def __init__(self, db: AsyncDatabase) -> None:
         self.collection: AsyncCollection = db[self.model.collection_name]
 
-    async def get(self, obj_id: str) -> ModelT | None:
-        oid = to_object_id(obj_id)
-        if oid is None:
+    async def get(self, entity_id: str) -> ModelT | None:
+        object_id = to_object_id(entity_id)
+        if object_id is None:
             return None
-        return await self._find_one({"_id": oid})
+        return await self._find_one({"_id": object_id})
 
-    async def add(self, obj: ModelT) -> ModelT:
-        result = await self.collection.insert_one(obj.to_mongo())
-        obj.id = str(result.inserted_id)
-        return obj
+    async def add(self, entity: ModelT) -> ModelT:
+        result = await self.collection.insert_one(entity.to_mongo())
+        entity.id = str(result.inserted_id)
+        return entity
 
-    async def save(self, obj: ModelT) -> ModelT:
+    async def save(self, entity: ModelT) -> ModelT:
         """Replace the stored document with `obj`, refreshing `updated_at` when it has one."""
-        if "updated_at" in type(obj).model_fields:
-            obj.updated_at = utcnow()
-        await self.collection.replace_one({"_id": ObjectId(obj.id)}, obj.to_mongo())
-        return obj
+        if "updated_at" in type(entity).model_fields:
+            entity.updated_at = utcnow()
+        await self.collection.replace_one({"_id": ObjectId(entity.id)}, entity.to_mongo())
+        return entity
 
-    async def delete(self, obj: ModelT) -> None:
-        await self.collection.delete_one({"_id": ObjectId(obj.id)})
+    async def delete(self, entity: ModelT) -> None:
+        await self.collection.delete_one({"_id": ObjectId(entity.id)})
 
     async def count(self, query: dict[str, Any] | None = None) -> int:
         return await self.collection.count_documents(query or {})

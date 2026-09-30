@@ -45,7 +45,9 @@ class RagService:
         batch_size = self.settings.embedding_batch_size
         for start in range(0, len(pending), batch_size):
             batch = pending[start : start + batch_size]
-            vectors = await self.embedder.embed([c.text for c in batch], input_type="document")
+            vectors = await self.embedder.embed(
+                [chunk.text for chunk in batch], input_type="document"
+            )
             await self.chunks.set_embeddings(
                 {chunk.id: vector for chunk, vector in zip(batch, vectors, strict=True)}
             )
@@ -59,7 +61,7 @@ class RagService:
     async def search(self, collection_id: str, query: str, top_k: int) -> SearchResponse:
         await self._ensure_collection(collection_id)
         matches = await self._retrieve(collection_id, query, top_k)
-        return SearchResponse(query=query, results=[_to_hit(m) for m in matches])
+        return SearchResponse(query=query, results=[_to_hit(match) for match in matches])
 
     async def answer(self, collection_id: str, question: str, top_k: int) -> AnswerResponse:
         await self._ensure_collection(collection_id)
@@ -77,19 +79,21 @@ class RagService:
             question=question,
             answer=response.text,
             model=response.model,
-            sources=[_to_hit(m) for m in matches],
+            sources=[_to_hit(match) for match in matches],
         )
 
     async def _retrieve(self, collection_id: str, query: str, top_k: int) -> list[VectorMatch]:
         [query_vector] = await self.embedder.embed([query], input_type="query")
         try:
             return await self.vectors.search(collection_id, query_vector, top_k)
-        except ValueError as exc:
-            raise BadRequestError(str(exc)) from exc
+        except ValueError as error:
+            raise BadRequestError(str(error)) from error
 
 
 def build_prompt(question: str, matches: list[VectorMatch]) -> str:
-    documents = "\n".join(_render_document(i, m) for i, m in enumerate(matches, start=1))
+    documents = "\n".join(
+        _render_document(position, match) for position, match in enumerate(matches, start=1)
+    )
     return f"<documents>\n{documents}\n</documents>\n\nQuestion: {question}"
 
 

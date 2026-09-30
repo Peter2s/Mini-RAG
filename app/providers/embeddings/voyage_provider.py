@@ -10,18 +10,18 @@ class VoyageEmbeddingProvider:
     def __init__(self, api_key: str | None, model: str) -> None:
         try:
             import voyageai
-        except ImportError as exc:  # pragma: no cover - optional dependency
+        except ImportError as error:  # pragma: no cover - optional dependency
             raise RuntimeError(
                 "EMBEDDING_PROVIDER=voyage requires the `voyageai` package: pip install voyageai"
-            ) from exc
+            ) from error
         self._client = voyageai.AsyncClient(api_key=api_key)
         self._model = model
 
     async def embed(self, texts: list[str], input_type: InputType) -> list[list[float]]:
         try:
             result = await self._client.embed(texts, model=self._model, input_type=input_type)
-        except Exception as exc:  # voyageai raises several unrelated error types
-            raise EmbeddingError(f"Voyage embedding request failed: {exc}") from exc
+        except Exception as error:  # voyageai raises several unrelated error types
+            raise EmbeddingError(f"Voyage embedding request failed: {error}") from error
         return result.embeddings
 
     async def aclose(self) -> None:

@@ -37,9 +37,9 @@ def mongo_url() -> str:
     try:
         with MongoClient(url, serverSelectionTimeoutMS=2000) as client:
             client.admin.command("ping")
-    except PyMongoError as exc:
+    except PyMongoError as error:
         pytest.skip(
-            f"MongoDB is not reachable ({exc.__class__.__name__}). Run: docker compose up -d"
+            f"MongoDB is not reachable ({error.__class__.__name__}). Run: docker compose up -d"
         )
     return url
 

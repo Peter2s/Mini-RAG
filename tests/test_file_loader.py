@@ -15,7 +15,7 @@ def test_markdown_is_one_page_without_server_path(tmp_path):
 def test_txt_keeps_unicode(tmp_path):
     path = tmp_path / "notes.txt"
     path.write_text("héllo wörld", encoding="utf-8")
-    assert [p.content for p in load_pages(path)] == ["héllo wörld"]
+    assert [page.content for page in load_pages(path)] == ["héllo wörld"]
 
 
 def test_pdf_returns_page_content_and_metadata(tmp_path):
@@ -24,11 +24,11 @@ def test_pdf_returns_page_content_and_metadata(tmp_path):
 
     pages = load_pages(path)
 
-    assert [p.content for p in pages] == ["First page text", "Second page text"]
-    assert [p.metadata["page"] for p in pages] == [0, 1]
-    assert [p.metadata["page_label"] for p in pages] == ["1", "2"]
-    assert all(p.metadata["total_pages"] == 2 for p in pages)
-    assert all("source" not in p.metadata for p in pages)
+    assert [page.content for page in pages] == ["First page text", "Second page text"]
+    assert [page.metadata["page"] for page in pages] == [0, 1]
+    assert [page.metadata["page_label"] for page in pages] == ["1", "2"]
+    assert all(page.metadata["total_pages"] == 2 for page in pages)
+    assert all("source" not in page.metadata for page in pages)
 
 
 def test_rejects_unknown_type(tmp_path):
@@ -44,6 +44,6 @@ def test_load_errors_do_not_leak_server_paths(tmp_path):
     bad_pdf = tmp_path / "broken.pdf"
     bad_pdf.write_bytes(b"not a pdf")
     for path in (bad_txt, bad_pdf):
-        with pytest.raises(DocumentLoadError) as info:
+        with pytest.raises(DocumentLoadError) as error_info:
             load_pages(path)
-        assert str(tmp_path) not in str(info.value)
+        assert str(tmp_path) not in str(error_info.value)

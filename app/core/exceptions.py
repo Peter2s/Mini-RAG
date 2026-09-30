@@ -54,10 +54,10 @@ class EmbeddingError(AppError):
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
-    async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
-        if exc.status_code >= 500:
-            logger.error("%s: %s", exc.code, exc.message)
+    async def handle_app_error(_: Request, error: AppError) -> JSONResponse:
+        if error.status_code >= 500:
+            logger.error("%s: %s", error.code, error.message)
         return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": {"code": exc.code, "message": exc.message}},
+            status_code=error.status_code,
+            content={"error": {"code": error.code, "message": error.message}},
         )

@@ -38,7 +38,7 @@ class CollectionService:
     async def list(self, offset: int, limit: int) -> Page[CollectionRead]:
         items = await self.collections.list(offset=offset, limit=limit)
         return Page[CollectionRead](
-            items=[CollectionRead.model_validate(p) for p in items],
+            items=[CollectionRead.model_validate(collection) for collection in items],
             total=await self.collections.count(),
             offset=offset,
             limit=limit,

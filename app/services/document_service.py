@@ -58,7 +58,7 @@ class DocumentService:
             suffix = Path(filename).suffix.lower() or "none"
             raise BadRequestError(
                 f"File type '{suffix}' is not allowed. "
-                f"Allowed: {', '.join(sorted(e.value for e in allowed))}"
+                f"Allowed: {', '.join(sorted(extension.value for extension in allowed))}"
             )
 
         limit = self.settings.max_upload_size_bytes
@@ -95,7 +95,7 @@ class DocumentService:
         await self._ensure_collection(collection_id)
         items = await self.documents.list_by_collection(collection_id, offset=offset, limit=limit)
         return Page[DocumentRead](
-            items=[DocumentRead.model_validate(d) for d in items],
+            items=[DocumentRead.model_validate(document) for document in items],
             total=await self.documents.count_by_collection(collection_id),
             offset=offset,
             limit=limit,
@@ -123,12 +123,12 @@ class DocumentService:
             await self._process_document(document, chunk_size, chunk_overlap)
             for document in await self.documents.list_all_by_collection(collection_id)
         ]
-        failed = sum(r.status == DocumentStatus.FAILED for r in results)
+        failed = sum(result.status == DocumentStatus.FAILED for result in results)
         return ProcessCollectionResult(
             collection_id=collection_id,
             documents_processed=len(results) - failed,
             documents_failed=failed,
-            chunks_created=sum(r.chunks_created for r in results),
+            chunks_created=sum(result.chunks_created for result in results),
             results=results,
         )
 
@@ -155,13 +155,13 @@ class DocumentService:
             created = await self.chunks.replace_for_document(
                 document.collection_id, document.id, chunks
             )
-        except Exception as exc:
-            logger.warning("Processing document %s failed: %s", document.id, exc)
+        except Exception as error:
+            logger.warning("Processing document %s failed: %s", document.id, error)
             document.status = DocumentStatus.FAILED
-            document.error = str(exc)
+            document.error = str(error)
             await self.documents.save(document)
             return ProcessResult(
-                document_id=document.id, status=document.status, chunks_created=0, error=str(exc)
+                document_id=document.id, status=document.status, chunks_created=0, error=str(error)
             )
 
         document.status = DocumentStatus.PROCESSED

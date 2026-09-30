@@ -41,14 +41,14 @@ def load_pages(path: Path) -> list[LoadedPage]:
     loader = get_loader(path)
     try:
         documents = loader.load()
-    except Exception as exc:
+    except Exception as error:
         # Loader errors include the server-side file path, so don't pass them on to API users.
         raise DocumentLoadError(
             f"Could not extract text from this {path.suffix.lower()} file"
-        ) from exc
+        ) from error
     return [
-        LoadedPage(content=doc.page_content, metadata=_clean_metadata(doc.metadata))
-        for doc in documents
+        LoadedPage(content=document.page_content, metadata=_clean_metadata(document.metadata))
+        for document in documents
     ]
 
 

@@ -29,17 +29,17 @@ class MongoVectorRepository:
     async def search(
         self, collection_id: str, query_vector: list[float], top_k: int
     ) -> list[VectorMatch]:
-        cid = to_object_id(collection_id)
-        if cid is None:
+        collection_object_id = to_object_id(collection_id)
+        if collection_object_id is None:
             return []
-        rows = await self.chunks.find(
-            {"collection_id": cid, "embedding": {"$ne": None}},
+        chunk_rows = await self.chunks.find(
+            {"collection_id": collection_object_id, "embedding": {"$ne": None}},
             {"document_id": 1, "chunk_index": 1, "text": 1, "metadata": 1, "embedding": 1},
         ).to_list()
-        if not rows:
+        if not chunk_rows:
             return []
 
-        matrix = np.asarray([row["embedding"] for row in rows], dtype=np.float32)
+        matrix = np.asarray([chunk_row["embedding"] for chunk_row in chunk_rows], dtype=np.float32)
         query = np.asarray(query_vector, dtype=np.float32)
         if matrix.shape[1] != query.shape[0]:
             raise ValueError(
@@ -48,24 +48,29 @@ class MongoVectorRepository:
             )
 
         norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query)
-        scores = np.divide(matrix @ query, norms, out=np.zeros(len(rows)), where=norms > 0)
-        top = [rows[i] | {"score": float(scores[i])} for i in np.argsort(-scores)[:top_k]]
+        scores = np.divide(matrix @ query, norms, out=np.zeros(len(chunk_rows)), where=norms > 0)
+        top_chunk_rows = [
+            chunk_rows[position] | {"score": float(scores[position])}
+            for position in np.argsort(-scores)[:top_k]
+        ]
 
         # Look up filenames only for the documents that made the cut.
-        document_ids = list({row["document_id"] for row in top})
+        document_ids = list({chunk_row["document_id"] for chunk_row in top_chunk_rows})
         filenames = {
-            doc["_id"]: doc["filename"]
-            async for doc in self.documents.find({"_id": {"$in": document_ids}}, {"filename": 1})
+            document["_id"]: document["filename"]
+            async for document in self.documents.find(
+                {"_id": {"$in": document_ids}}, {"filename": 1}
+            )
         }
         return [
             VectorMatch(
-                chunk_id=str(row["_id"]),
-                document_id=str(row["document_id"]),
-                filename=filenames.get(row["document_id"], "unknown"),
-                chunk_index=row["chunk_index"],
-                text=row["text"],
-                score=row["score"],
-                metadata=row.get("metadata") or {},
+                chunk_id=str(chunk_row["_id"]),
+                document_id=str(chunk_row["document_id"]),
+                filename=filenames.get(chunk_row["document_id"], "unknown"),
+                chunk_index=chunk_row["chunk_index"],
+                text=chunk_row["text"],
+                score=chunk_row["score"],
+                metadata=chunk_row.get("metadata") or {},
             )
-            for row in top
+            for chunk_row in top_chunk_rows
         ]

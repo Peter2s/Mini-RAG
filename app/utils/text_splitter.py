@@ -41,4 +41,6 @@ def split_pages(
         [normalize_text(page.content) for page in pages],
         metadatas=[page.metadata for page in pages],
     )
-    return [TextChunk(text=doc.page_content, metadata=doc.metadata) for doc in documents]
+    return [
+        TextChunk(text=document.page_content, metadata=document.metadata) for document in documents
+    ]

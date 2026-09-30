@@ -25,8 +25,10 @@ class HashEmbeddingProvider:
         return [self._embed_one(text) for text in texts]
 
     def _embed_one(self, text: str) -> list[float]:
-        tokens = [t.lower() for t in _TOKEN.findall(text)]
-        features = tokens + [f"{a}_{b}" for a, b in zip(tokens, tokens[1:], strict=False)]
+        tokens = [token.lower() for token in _TOKEN.findall(text)]
+        features = tokens + [
+            f"{first}_{second}" for first, second in zip(tokens, tokens[1:], strict=False)
+        ]
         vector = [0.0] * self.dimension
         for feature in features:
             digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest()
@@ -34,8 +36,8 @@ class HashEmbeddingProvider:
             index = value % self.dimension
             sign = 1.0 if (value >> 63) & 1 else -1.0
             vector[index] += sign
-        norm = math.sqrt(sum(v * v for v in vector))
-        return [v / norm for v in vector] if norm else vector
+        norm = math.sqrt(sum(value * value for value in vector))
+        return [value / norm for value in vector] if norm else vector
 
     async def aclose(self) -> None:
         return None

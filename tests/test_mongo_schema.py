@@ -12,10 +12,12 @@ NOW = datetime.now(UTC)
 
 
 def test_startup_creates_collections_validators_and_indexes(client, mongo_db):
-    info = {c["name"]: c for c in mongo_db.list_collections()}
+    collections_by_name = {
+        collection_info["name"]: collection_info for collection_info in mongo_db.list_collections()
+    }
     for name, validator in VALIDATORS.items():
-        assert info[name]["options"]["validator"] == validator
-        assert info[name]["options"]["validationAction"] == "error"
+        assert collections_by_name[name]["options"]["validator"] == validator
+        assert collections_by_name[name]["options"]["validationAction"] == "error"
         index_names = set(mongo_db[name].index_information())
         assert {index.document["name"] for index in INDEXES[name]} <= index_names
     assert mongo_db["collections"].index_information()["uniq_name"]["unique"] is True
@@ -116,9 +118,9 @@ def test_deleting_collection_deletes_documents_and_chunks(client, collection, mo
 
     assert client.delete(f"/api/v1/collections/{collection['id']}").status_code == 204
 
-    cid = ObjectId(collection["id"])
-    assert mongo_db["documents"].count_documents({"collection_id": cid}) == 0
-    assert mongo_db["chunks"].count_documents({"collection_id": cid}) == 0
-    oid = ObjectId(other["id"])
-    assert mongo_db["documents"].count_documents({"collection_id": oid}) == 2
-    assert mongo_db["chunks"].count_documents({"collection_id": oid}) > 0
+    collection_object_id = ObjectId(collection["id"])
+    assert mongo_db["documents"].count_documents({"collection_id": collection_object_id}) == 0
+    assert mongo_db["chunks"].count_documents({"collection_id": collection_object_id}) == 0
+    other_collection_object_id = ObjectId(other["id"])
+    assert mongo_db["documents"].count_documents({"collection_id": other_collection_object_id}) == 2
+    assert mongo_db["chunks"].count_documents({"collection_id": other_collection_object_id}) > 0

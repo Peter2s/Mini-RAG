@@ -5,7 +5,7 @@ from app.utils.text_splitter import normalize_text, split_pages
 
 
 def _texts(chunks):
-    return [c.text for c in chunks]
+    return [chunk.text for chunk in chunks]
 
 
 def test_short_page_is_single_chunk_with_metadata():
@@ -19,14 +19,14 @@ def test_empty_pages_produce_no_chunks():
 
 
 def test_chunks_respect_size_and_overlap():
-    text = " ".join(f"word{i}" for i in range(500))
+    text = " ".join(f"word{number}" for number in range(500))
     chunks = _texts(split_pages([LoadedPage(text)], 200, 40))
     assert len(chunks) > 1
-    assert all(len(c) <= 200 for c in chunks)
+    assert all(len(chunk) <= 200 for chunk in chunks)
     # consecutive chunks share words thanks to the overlap
     assert set(chunks[0].split()[-3:]) & set(chunks[1].split()[:10])
     # words are never cut in half
-    assert all(word.startswith("word") for c in chunks for word in c.split())
+    assert all(word.startswith("word") for chunk in chunks for word in chunk.split())
 
 
 def test_prefers_paragraph_boundaries():

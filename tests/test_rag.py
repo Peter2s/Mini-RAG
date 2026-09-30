@@ -91,7 +91,7 @@ def test_pdf_and_markdown_end_to_end(client, collection, fake_llm):
 
     processed = client.post(f"{base}/documents/process").json()
     assert processed["documents_processed"] == 2, processed
-    assert [r["pages_loaded"] for r in processed["results"]] == [2, 1]
+    assert [result["pages_loaded"] for result in processed["results"]] == [2, 1]
     client.post(f"{base}/index")
 
     hits = client.post(f"{base}/search", json={"query": "vacation days", "top_k": 1}).json()

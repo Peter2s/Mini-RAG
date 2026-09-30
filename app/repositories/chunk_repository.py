@@ -26,20 +26,20 @@ class ChunkRepository(MongoRepository[Chunk]):
                     Chunk(
                         collection_id=collection_id,
                         document_id=document_id,
-                        chunk_index=i,
+                        chunk_index=index,
                         text=chunk.text,
                         metadata=chunk.metadata,
                     ).to_mongo()
-                    for i, chunk in enumerate(chunks)
+                    for index, chunk in enumerate(chunks)
                 ]
             )
         return len(chunks)
 
     async def list_for_indexing(self, collection_id: str, only_missing: bool) -> list[Chunk]:
-        cid = to_object_id(collection_id)
-        if cid is None:
+        collection_object_id = to_object_id(collection_id)
+        if collection_object_id is None:
             return []
-        query = {"collection_id": cid}
+        query = {"collection_id": collection_object_id}
         if only_missing:
             query["embedding"] = None
         # Existing embeddings aren't needed to re-embed, so don't transfer them.
@@ -56,17 +56,25 @@ class ChunkRepository(MongoRepository[Chunk]):
             )
 
     async def count_by_collection(self, collection_id: str) -> int:
-        cid = to_object_id(collection_id)
-        return 0 if cid is None else await self.count({"collection_id": cid})
+        collection_object_id = to_object_id(collection_id)
+        return (
+            0
+            if collection_object_id is None
+            else await self.count({"collection_id": collection_object_id})
+        )
 
     async def delete_by_document(self, document_id: str) -> int:
-        did = to_object_id(document_id)
-        if did is None:
+        document_object_id = to_object_id(document_id)
+        if document_object_id is None:
             return 0
-        return (await self.collection.delete_many({"document_id": did})).deleted_count
+        return (
+            await self.collection.delete_many({"document_id": document_object_id})
+        ).deleted_count
 
     async def delete_by_collection(self, collection_id: str) -> int:
-        cid = to_object_id(collection_id)
-        if cid is None:
+        collection_object_id = to_object_id(collection_id)
+        if collection_object_id is None:
             return 0
-        return (await self.collection.delete_many({"collection_id": cid})).deleted_count
+        return (
+            await self.collection.delete_many({"collection_id": collection_object_id})
+        ).deleted_count
