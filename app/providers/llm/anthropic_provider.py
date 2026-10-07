@@ -10,8 +10,6 @@ from app.schemas.llm import LLMResponse
 
 logger = logging.getLogger(__name__)
 
-# `fallbacks: "default"` re-runs a request that a safety classifier declined on a
-# recommended fallback model, server-side, inside the same call.
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
@@ -36,7 +34,6 @@ class AnthropicLLMProvider:
         except anthropic.APIError as error:
             raise _to_llm_error(error) from error
         except TypeError as error:
-            # The SDK raises TypeError when no API key, auth token, or profile is configured.
             if "authentication method" not in str(error):
                 raise
             raise LLMError(

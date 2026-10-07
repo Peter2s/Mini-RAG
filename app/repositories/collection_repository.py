@@ -14,7 +14,7 @@ class CollectionRepository(MongoRepository[Collection]):
     async def add(self, entity: Collection) -> Collection:
         try:
             return await super().add(entity)
-        except DuplicateKeyError as error:  # unique index on name
+        except DuplicateKeyError as error:
             raise ConflictError(f"Collection '{entity.name}' already exists") from error
 
     async def list(self, offset: int = 0, limit: int = 50) -> list[Collection]:

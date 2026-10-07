@@ -12,7 +12,6 @@ from langchain_core.document_loaders import BaseLoader
 from app.core.enums import FileExtension
 from app.schemas.chunk import LoadedPage
 
-# Loader metadata keys we never store or return. `source` is the server-side file path.
 _HIDDEN_METADATA = frozenset({"source", "file_path"})
 
 
@@ -30,7 +29,6 @@ def get_loader(path: Path) -> BaseLoader:
         case FileExtension.TXT | FileExtension.MD:
             return TextLoader(path, encoding="utf-8")
         case FileExtension.PDF:
-            # One Document per page, each with page, page_label, and total_pages metadata.
             return PyPDFLoader(path, mode="page")
         case None:
             raise UnsupportedFileTypeError(f"Unsupported file type: {path.suffix or 'none'}")
@@ -42,7 +40,6 @@ def load_pages(path: Path) -> list[LoadedPage]:
     try:
         documents = loader.load()
     except Exception as error:
-        # Loader errors include the server-side file path, so don't pass them on to API users.
         raise DocumentLoadError(
             f"Could not extract text from this {path.suffix.lower()} file"
         ) from error

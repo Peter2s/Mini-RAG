@@ -18,7 +18,7 @@ class VectorMatch:
 
 
 class IndexRequest(BaseModel):
-    reset: bool = Field(default=False, description="Re-embed every chunk, not only new ones.")
+    do_reset: bool = Field(default=False, description="Re-embed every chunk, not only new ones.")
 
 
 class IndexResult(BaseModel):

@@ -46,3 +46,18 @@ class DatabaseStatus(StrEnum):
 
     OK = "ok"
     UNAVAILABLE = "unavailable"
+
+
+class EmbeddingProviderName(StrEnum):
+    """Which embedding backend turns text into vectors."""
+
+    HASH = "hash"
+    FASTEMBED = "fastembed"
+    VOYAGE = "voyage"
+
+
+class VectorStoreName(StrEnum):
+    """Where chunk embeddings are stored and searched."""
+
+    QDRANT = "qdrant"
+    MONGODB = "mongodb"

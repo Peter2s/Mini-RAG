@@ -26,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 INDEXES: dict[MongoCollection, list[IndexModel]] = {
     MongoCollection.COLLECTIONS: [
-        # get_by_name(), and collection names must be unique.
-        # Listing all collections sorts by _id, which the built-in _id index serves.
         IndexModel([("name", ASCENDING)], name="uniq_name", unique=True),
     ],
     MongoCollection.DOCUMENTS: [
@@ -39,9 +37,7 @@ INDEXES: dict[MongoCollection, list[IndexModel]] = {
         ),
     ],
     MongoCollection.CHUNKS: [
-        # Chunks to embed (sorted by _id), vector search candidates, count/delete by collection.
         IndexModel([("collection_id", ASCENDING), ("_id", ASCENDING)], name="collection_id_order"),
-        # Delete a document's chunks; a document can't have two chunks at the same position.
         IndexModel(
             [("document_id", ASCENDING), ("chunk_index", ASCENDING)],
             name="uniq_document_chunk_index",
@@ -86,5 +82,4 @@ async def sync_indexes(
             logger.warning("Dropping index %s.%s (%s)", collection.name, name, reason)
             await collection.drop_index(name)
 
-    # Creating an index that already exists with the same definition is a no-op.
     await collection.create_indexes(indexes)

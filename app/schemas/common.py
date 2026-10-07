@@ -8,6 +8,7 @@ class HealthResponse(BaseModel):
     app: str
     version: str
     database: DatabaseStatus
+    vector_store: DatabaseStatus
 
 
 class Page[T](BaseModel):

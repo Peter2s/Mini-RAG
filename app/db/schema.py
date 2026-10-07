@@ -66,8 +66,9 @@ VALIDATORS: dict[MongoCollection, dict[str, Any]] = {
             "chunk_index": _NON_NEGATIVE_INT,
             "text": _STRING,
             "metadata": {"bsonType": "object"},
-            # null until the chunk is indexed
             "embedding": {"bsonType": ["array", "null"], "items": {"bsonType": "double"}},
+            "embedding_model": _NULLABLE_STRING,
+            "indexed_at": {"bsonType": ["date", "null"]},
             "created_at": _DATE,
         },
     ),
@@ -85,8 +86,23 @@ async def apply_schema(db: AsyncDatabase[MongoDocument]) -> None:
         if name not in existing:
             try:
                 await db.create_collection(name, **options)
-            except CollectionInvalid:  # created concurrently by another worker
+            except CollectionInvalid:
                 await db.command("collMod", name, **options)
         else:
             await db.command("collMod", name, **options)
+        await _backfill(db, name)
         await sync_indexes(db[name], INDEXES[name])
+
+
+_ADDED_FIELDS: dict[MongoCollection, dict[str, Any]] = {
+    MongoCollection.CHUNKS: {"embedding_model": None, "indexed_at": None},
+}
+
+
+async def _backfill(db: AsyncDatabase[MongoDocument], name: MongoCollection) -> None:
+    fields = _ADDED_FIELDS.get(name)
+    if fields:
+        fill_missing = {field: {"$ifNull": [f"${field}", value]} for field, value in fields.items()}
+        await db[name].update_many(
+            {"$or": [{field: {"$exists": False}} for field in fields]}, [{"$set": fill_missing}]
+        )

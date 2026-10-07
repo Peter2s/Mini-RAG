@@ -33,7 +33,6 @@ class MongoModel(BaseModel):
     collection_name: ClassVar[MongoCollection]
     object_id_fields: ClassVar[tuple[str, ...]] = ()
 
-    # Generated client-side (as MongoDB drivers do), so a model always has an id.
     id: ObjectIdStr = Field(default_factory=lambda: str(ObjectId()))
 
     @classmethod

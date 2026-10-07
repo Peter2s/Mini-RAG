@@ -9,7 +9,7 @@ def test_markdown_is_one_page_without_server_path(tmp_path):
     path.write_text("# Title\nbody")
     [page] = load_pages(path)
     assert page.content == "# Title\nbody"
-    assert page.metadata == {}  # `source` (the server path) is stripped
+    assert page.metadata == {}
 
 
 def test_txt_keeps_unicode(tmp_path):

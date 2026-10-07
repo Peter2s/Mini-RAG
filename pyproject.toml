@@ -16,6 +16,8 @@ dependencies = [
     "langchain-community>=0.4.2",
     "langchain-text-splitters>=1.1.2",
     "pymongo>=4.18.2",
+    "fastembed>=0.8.1",
+    "qdrant-client>=1.19.1",
 ]
 
 [project.optional-dependencies]
@@ -37,7 +39,11 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-filterwarnings = ["ignore:`langchain-community` is being sunset:DeprecationWarning"]
+filterwarnings = [
+    "ignore:`langchain-community` is being sunset:DeprecationWarning",
+    # Tests talk to Qdrant over plain HTTP on localhost, with an API key.
+    "ignore:Api key is used with an insecure connection:UserWarning",
+]
 
 [tool.ruff]
 line-length = 100

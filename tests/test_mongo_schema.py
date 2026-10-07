@@ -45,7 +45,7 @@ def test_schema_can_be_applied_again_on_restart(client, settings):
         (
             MongoCollection.COLLECTIONS,
             {"name": "x", "description": None, "created_at": NOW},
-        ),  # missing field
+        ),
         (
             MongoCollection.COLLECTIONS,
             {"name": "x", "description": None, "created_at": NOW, "updated_at": NOW, "extra": 1},
@@ -114,7 +114,7 @@ def test_validator_rejects_invalid_documents(client, mongo_db, collection, docum
 def _ingest(client, collection_id: str) -> None:
     base = f"/api/v1/collections/{collection_id}"
     for name in ("a.txt", "b.txt"):
-        content = f"{name} has some text. ".encode() * 20  # distinct content per file
+        content = f"{name} has some text. ".encode() * 20
         client.post(f"{base}/documents", files={"file": (name, content, "text/plain")})
     client.post(f"{base}/documents/process")
     client.post(f"{base}/index")
@@ -126,6 +126,8 @@ def test_stored_documents_use_object_ids_and_embeddings(client, collection, mong
     assert isinstance(chunk["collection_id"], ObjectId)
     assert isinstance(chunk["document_id"], ObjectId)
     assert len(chunk["embedding"]) == 512
+    assert chunk["embedding_model"] == "hash:512"
+    assert isinstance(chunk["indexed_at"], datetime)
     document = mongo_db[MongoCollection.DOCUMENTS].find_one()
     assert document["status"] == "processed"
 
@@ -138,9 +140,7 @@ def test_deleting_document_deletes_its_chunks(client, collection, mongo_db):
     response = client.delete(f"/api/v1/collections/{collection['id']}/documents/{first}")
     assert response.status_code == 204
     assert mongo_db[MongoCollection.CHUNKS].count_documents({"document_id": ObjectId(first)}) == 0
-    assert (
-        mongo_db[MongoCollection.CHUNKS].count_documents({}) > 0
-    )  # the other document's chunks remain
+    assert mongo_db[MongoCollection.CHUNKS].count_documents({}) > 0
 
 
 def test_deleting_collection_deletes_documents_and_chunks(client, collection, mongo_db):
@@ -172,3 +172,29 @@ def test_deleting_collection_deletes_documents_and_chunks(client, collection, mo
         )
         > 0
     )
+
+
+def test_startup_backfills_fields_added_to_existing_chunks(client, collection, settings, mongo_db):
+    legacy = {
+        "collection_id": ObjectId(collection["id"]),
+        "document_id": ObjectId(),
+        "chunk_index": 0,
+        "text": "stored before embedding_model existed",
+        "metadata": {},
+        "embedding": None,
+        "created_at": NOW,
+    }
+    chunks = mongo_db[MongoCollection.CHUNKS]
+    chunks.insert_one(legacy, bypass_document_validation=True)
+    indexed_at = datetime(2026, 1, 1, tzinfo=UTC)
+    chunks.insert_one(
+        {**legacy, "_id": ObjectId(), "chunk_index": 1, "indexed_at": indexed_at},
+        bypass_document_validation=True,
+    )
+
+    with TestClient(create_app(settings)):
+        pass
+
+    first, second = chunks.find().sort("chunk_index", 1)
+    assert (first["embedding_model"], first["indexed_at"]) == (None, None)
+    assert (second["embedding_model"], second["indexed_at"]) == (None, indexed_at)

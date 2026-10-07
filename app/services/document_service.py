@@ -18,6 +18,7 @@ from app.repositories import (
     CollectionRepository,
     DocumentRepository,
     FileRepository,
+    VectorRepository,
 )
 from app.schemas.common import Page
 from app.schemas.document import (
@@ -41,12 +42,14 @@ class DocumentService:
         documents: DocumentRepository,
         chunks: ChunkRepository,
         files: FileRepository,
+        vectors: VectorRepository,
     ) -> None:
         self.settings = settings
         self.collections = collections
         self.documents = documents
         self.chunks = chunks
         self.files = files
+        self.vectors = vectors
 
     async def _ensure_collection(self, collection_id: str) -> None:
         if await self.collections.get(collection_id) is None:
@@ -84,7 +87,6 @@ class DocumentService:
                 f"'{existing.filename}' (document {existing.id})"
             )
 
-        # Stored under its content hash, so the name on disk never depends on the upload name.
         path = await self.files.save(collection_id, f"{content_hash}{extension}", data)
         try:
             return await self.documents.add(
@@ -122,6 +124,7 @@ class DocumentService:
     async def delete(self, collection_id: str, document_id: str) -> None:
         document = await self.get(collection_id, document_id)
         stored_path = document.stored_path
+        await self.vectors.delete_document(collection_id, document_id)
         await self.chunks.delete_by_document(document_id)
         await self.documents.delete(document)
         await self.files.delete(stored_path)
@@ -166,10 +169,10 @@ class DocumentService:
     ) -> ProcessResult:
         try:
             pages = await run_in_threadpool(load_pages, Path(document.stored_path))
-            # Pages are split separately, so every chunk keeps the metadata of its page.
             chunks = split_pages(pages, chunk_size, chunk_overlap)
             if not chunks:
                 raise ValueError("No text could be extracted from the document")
+            await self.vectors.delete_document(document.collection_id, document.id)
             created = await self.chunks.replace_for_document(
                 document.collection_id, document.id, chunks
             )

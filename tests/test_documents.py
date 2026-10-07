@@ -125,7 +125,7 @@ def test_file_is_stored_under_its_content_hash(client, collection, settings):
 
     expected_hash = hashlib.sha256(content).hexdigest()
     assert document["content_hash"] == expected_hash
-    assert document["filename"] == "My Notes (final).MD"  # original name kept for display
+    assert document["filename"] == "My Notes (final).MD"
     stored = [path.name for path in (settings.upload_dir / collection["id"]).iterdir()]
     assert stored == [f"{expected_hash}.md"]
 
@@ -142,7 +142,6 @@ def test_concurrent_duplicate_is_rejected_by_index_and_keeps_the_file(
 ):
     first = _upload(client, collection["id"], content=b"raced content").json()
 
-    # Simulate a second upload that passed the duplicate check before the first was saved.
     async def not_found(self, collection_id, content_hash):
         return None
 
@@ -151,4 +150,4 @@ def test_concurrent_duplicate_is_rejected_by_index_and_keeps_the_file(
 
     assert duplicate.status_code == 409
     stored = settings.upload_dir / collection["id"] / f"{first['content_hash']}.txt"
-    assert stored.read_bytes() == b"raced content"  # the winner's file is untouched
+    assert stored.read_bytes() == b"raced content"

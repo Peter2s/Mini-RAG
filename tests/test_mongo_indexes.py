@@ -49,7 +49,7 @@ def _assert_uses_index(cursor, index_name: str) -> None:
 def ingested(client, collection) -> dict[str, ObjectId]:
     base = f"/api/v1/collections/{collection['id']}"
     for name in ("a.txt", "b.txt"):
-        content = f"{name} has some text. ".encode() * 20  # distinct content per file
+        content = f"{name} has some text. ".encode() * 20
         client.post(f"{base}/documents", files={"file": (name, content, "text/plain")})
     client.post(f"{base}/documents/process")
     documents = client.get(f"{base}/documents").json()["items"]
@@ -84,7 +84,10 @@ def test_documents_listed_in_order_without_in_memory_sort(mongo_db, ingested):
 def test_chunks_to_index_listed_in_order_without_in_memory_sort(mongo_db, ingested):
     cursor = (
         mongo_db[MongoCollection.CHUNKS]
-        .find({"collection_id": ingested["collection"], "embedding": None}, {"embedding": 0})
+        .find(
+            {"collection_id": ingested["collection"], "embedding_model": {"$ne": "hash:512"}},
+            {"embedding": 0},
+        )
         .sort("_id", 1)
     )
     _assert_uses_index(cursor, "collection_id_order")
@@ -92,7 +95,7 @@ def test_chunks_to_index_listed_in_order_without_in_memory_sort(mongo_db, ingest
 
 def test_vector_search_candidates(mongo_db, ingested):
     cursor = mongo_db[MongoCollection.CHUNKS].find(
-        {"collection_id": ingested["collection"], "embedding": {"$ne": None}}
+        {"collection_id": ingested["collection"], "embedding_model": "hash:512"}
     )
     _assert_uses_index(cursor, "collection_id_order")
 
@@ -120,12 +123,10 @@ def test_every_collection_has_exactly_the_declared_indexes(client, mongo_db):
 
 def test_restart_drops_undeclared_and_rebuilds_changed_indexes(client, settings, mongo_db):
     chunks = mongo_db[MongoCollection.CHUNKS]
-    # The indexes the previous version of the app created.
     chunks.create_index([("collection_id", ASCENDING)], name="by_collection")
     chunks.create_index(
         [("document_id", ASCENDING), ("chunk_index", ASCENDING)], name="by_document_order"
     )
-    # A declared name whose definition drifted (no longer unique).
     chunks.drop_index("uniq_document_chunk_index")
     chunks.create_index([("document_id", ASCENDING)], name="uniq_document_chunk_index")
 

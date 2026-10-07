@@ -1,3 +1,7 @@
+from fastapi.testclient import TestClient
+
+from app.core.exceptions import VectorStoreError
+from app.main import create_app
 from tests.pdf_factory import make_pdf
 
 DOCS = {
@@ -36,11 +40,37 @@ def test_search_ranks_relevant_chunk_first(client, collection):
     assert results[0]["score"] >= results[1]["score"]
 
 
-def test_index_is_incremental_unless_reset(client, collection):
+def test_index_is_incremental_unless_do_reset(client, collection):
     _ingest(client, collection["id"])
     base = f"/api/v1/collections/{collection['id']}/index"
     assert client.post(base).json()["chunks_indexed"] == 0
-    assert client.post(base, json={"reset": True}).json()["chunks_indexed"] == 3
+    assert client.post(base, json={"do_reset": True}).json()["chunks_indexed"] == 3
+
+
+def test_switching_embedding_model_reindexes_without_a_reset(client, collection, settings):
+    _ingest(client, collection["id"])
+    base = f"/api/v1/collections/{collection['id']}"
+
+    other_model = settings.model_copy(update={"embedding_dimension": 256})
+    with TestClient(create_app(other_model)) as other:
+        assert other.post(f"{base}/index").json()["chunks_indexed"] == 3
+        assert other.post(f"{base}/index").json()["chunks_indexed"] == 0
+        hits = other.post(f"{base}/search", json={"query": "capital of Japan", "top_k": 1})
+        assert hits.json()["results"][0]["filename"] == "japan.txt"
+
+
+def test_interrupted_reset_leaves_chunks_pending(client, collection, monkeypatch):
+    _ingest(client, collection["id"])
+    base = f"/api/v1/collections/{collection['id']}/index"
+
+    async def unreachable(collection_id: str) -> None:
+        raise VectorStoreError("vector store down")
+
+    monkeypatch.setattr(client.app.state.vectors, "delete_collection", unreachable)
+    assert client.post(base, json={"do_reset": True}).status_code == 502
+    monkeypatch.undo()
+
+    assert client.post(base).json()["chunks_indexed"] == 3
 
 
 def test_answer_uses_retrieved_context(client, collection, fake_llm):

@@ -18,7 +18,7 @@ async def index_collection(
     collection_id: str, service: RagServiceDep, options: IndexRequest | None = None
 ) -> IndexResult:
     """Embed the collection's processed chunks so they become searchable."""
-    return await service.index(collection_id, reset=(options or IndexRequest()).reset)
+    return await service.index(collection_id, do_reset=(options or IndexRequest()).do_reset)
 
 
 @router.post("/search")

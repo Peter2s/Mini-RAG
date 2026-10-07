@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from pymongo.errors import DuplicateKeyError
 
 from app.core.exceptions import ConflictError
@@ -15,6 +17,16 @@ class DocumentRepository(MongoRepository[Document]):
             raise ConflictError(
                 "A file with the same content is already in this collection"
             ) from error
+
+    async def filenames(self, document_ids: Iterable[str]) -> dict[str, str]:
+        """Map document ids to their original filenames."""
+        object_ids = [
+            object_id for document_id in document_ids if (object_id := to_object_id(document_id))
+        ]
+        if not object_ids:
+            return {}
+        cursor = self.collection.find({"_id": {"$in": object_ids}}, {"filename": 1})
+        return {str(document["_id"]): document["filename"] async for document in cursor}
 
     async def get_by_content_hash(self, collection_id: str, content_hash: str) -> Document | None:
         collection_object_id = to_object_id(collection_id)

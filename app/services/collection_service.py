@@ -5,6 +5,7 @@ from app.repositories import (
     CollectionRepository,
     DocumentRepository,
     FileRepository,
+    VectorRepository,
 )
 from app.schemas.collection import CollectionCreate, CollectionRead
 from app.schemas.common import Page
@@ -17,11 +18,13 @@ class CollectionService:
         documents: DocumentRepository,
         chunks: ChunkRepository,
         files: FileRepository,
+        vectors: VectorRepository,
     ) -> None:
         self.collections = collections
         self.documents = documents
         self.chunks = chunks
         self.files = files
+        self.vectors = vectors
 
     async def create(self, data: CollectionCreate) -> Collection:
         name = data.name.strip()
@@ -46,7 +49,7 @@ class CollectionService:
 
     async def delete(self, collection_id: str) -> None:
         collection = await self.get(collection_id)
-        # MongoDB has no cascading deletes: remove children first, then the collection.
+        await self.vectors.delete_collection(collection_id)
         await self.chunks.delete_by_collection(collection_id)
         await self.documents.delete_by_collection(collection_id)
         await self.collections.delete(collection)

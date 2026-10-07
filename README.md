@@ -10,8 +10,8 @@ Requires [uv](https://docs.astral.sh/uv/), Python 3.12+, and Docker.
 
 ```bash
 uv sync
-cp .env.example .env        # set MONGO_ROOT_PASSWORD (and the same in MONGODB_URL), ANTHROPIC_API_KEY
-docker compose up -d        # MongoDB on localhost:27017
+cp .env.example .env        # set MONGO_ROOT_PASSWORD (and in MONGODB_URL), QDRANT_API_KEY, ANTHROPIC_API_KEY
+docker compose up -d        # MongoDB on localhost:27017, Qdrant on localhost:6333
 uv run uvicorn app.main:app --reload
 ```
 
@@ -54,7 +54,7 @@ curl -X POST localhost:8000/api/v1/collections/$COLLECTION/answer \
 | POST | `/api/v1/collections/{id}/documents/process` | Chunk every document |
 | GET / DELETE | `/api/v1/collections/{id}/documents/{doc_id}` | Get / delete a document |
 | POST | `/api/v1/collections/{id}/documents/{doc_id}/process` | Chunk one document |
-| POST | `/api/v1/collections/{id}/index` | Embed new chunks (`{"reset": true}` re-embeds all) |
+| POST | `/api/v1/collections/{id}/index` | Embed new chunks (`{"do_reset": true}` re-embeds all) |
 | POST | `/api/v1/collections/{id}/search` | Top-k similar chunks |
 | POST | `/api/v1/collections/{id}/answer` | Retrieve chunks and answer with Claude |
 
@@ -83,12 +83,33 @@ app/
   The `collections`, `documents`, and `chunks` collections each have a strict JSON Schema
   validator and indexes, defined in `app/db/schema.py` and applied on every startup.
   Deleting a collection or document also deletes its documents and chunks.
-- **Vector search** is brute-force cosine similarity over embeddings stored in `chunks`.
-  That is fine for thousands of chunks per collection. For more, implement the
-  `VectorRepository` protocol against Atlas Vector Search or Qdrant.
-- **Embeddings** default to `hash`, an offline lexical embedder that needs no API key. It is
-  meant for development and tests. For real semantic search, run `uv sync --extra voyage` and set
-  `EMBEDDING_PROVIDER=voyage` plus `VOYAGE_API_KEY`, then re-index with `{"reset": true}`.
+- **Vector search** goes through one `VectorRepository` interface (`app/repositories/vector/`)
+  with two implementations, picked by `VECTOR_STORE`:
+  - `qdrant` (default): Qdrant, started by `docker compose`. Each embedding model gets its own
+    Qdrant collection (`chunks__<model>`), created at startup. Inside it, all collections are
+    partitioned by a `collection_id` field indexed as a tenant key, which is Qdrant's
+    recommended multitenancy layout. Its dashboard is at http://localhost:6333/dashboard.
+  - `mongodb`: brute-force cosine similarity over vectors stored on MongoDB chunks. No extra
+    service, fine for thousands of chunks per collection.
+
+  Chunk text and metadata always stay in MongoDB, and the vector store holds only vectors and
+  ids. Indexing records on each chunk which embedding model indexed it (`embedding_model`)
+  and when (`indexed_at`), and deleting or reprocessing documents also deletes their vectors.
+  After switching vector stores, re-index each collection with `{"do_reset": true}`.
+- **Embeddings** go through one `EmbeddingProvider` interface (`app/providers/embeddings/`):
+  `embed_documents`, `embed_query`, plus the model's `model_id` and `dimension`. One instance
+  is built at startup and shared by every request. Vectors of different models are never
+  mixed: the vector store keeps each model apart, so switching models can't corrupt search.
+
+  They default to FastEmbed, which runs free models locally with no API key.
+  The default model, `google/embeddinggemma-300m`, handles Arabic and 100+ other languages,
+  and matches English questions to Arabic passages. It downloads once (1.2 GB) into
+  `data/models` in the background at startup, then works offline. For a smaller, faster model
+  set `FASTEMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`.
+  `EMBEDDING_PROVIDER=voyage` uses the hosted Voyage API instead (`uv sync --extra voyage`),
+  and `hash` is an offline word matcher used by the tests. After changing the provider or
+  model, call `/index` on each collection: chunks not embedded by the new model are re-embedded
+  automatically, no reset needed.
 - **Answers** come from Claude (`claude-opus-5-5` by default) via the official `anthropic` SDK.
   Server-side refusal fallbacks are on by default; set `LLM_ENABLE_FALLBACKS=false` on
   Bedrock, Vertex, or Foundry.
@@ -122,6 +143,9 @@ uv run mypy
 uv run pytest
 ```
 
-Tests replace Claude with a fake provider. Database tests need MongoDB running
-(`docker compose up -d`); each test uses its own throwaway database. They connect with
-`MONGODB_TEST_URL` if set, otherwise `MONGODB_URL`, and are skipped when MongoDB is unreachable.
+Tests replace Claude with a fake provider and use the `hash` embedder. The test that
+runs a real embedding model on Arabic documents is opt-in: `RUN_MODEL_TESTS=1 uv run pytest`. Database tests need MongoDB running
+and Qdrant (`docker compose up -d`). Each test uses its own throwaway MongoDB database and
+Qdrant collection. Tests connect with `MONGODB_TEST_URL`, `QDRANT_TEST_URL`, and
+`QDRANT_TEST_API_KEY` if set, otherwise the app settings, and are skipped when a service is
+unreachable. The vector-store contract tests run against both implementations.

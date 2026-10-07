@@ -47,6 +47,11 @@ class LLMRefusalError(LLMError):
     code = "llm_refusal"
 
 
+class VectorStoreError(AppError):
+    status_code = 502
+    code = "vector_store_error"
+
+
 class EmbeddingError(AppError):
     status_code = 502
     code = "embedding_error"

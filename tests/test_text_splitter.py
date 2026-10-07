@@ -23,9 +23,7 @@ def test_chunks_respect_size_and_overlap():
     chunks = _texts(split_pages([LoadedPage(text)], 200, 40))
     assert len(chunks) > 1
     assert all(len(chunk) <= 200 for chunk in chunks)
-    # consecutive chunks share words thanks to the overlap
     assert set(chunks[0].split()[-3:]) & set(chunks[1].split()[:10])
-    # words are never cut in half
     assert all(word.startswith("word") for chunk in chunks for word in chunk.split())
 
 
@@ -48,7 +46,6 @@ def test_each_chunk_keeps_its_own_page_metadata_and_offset():
         assert normalized[start : start + len(chunk.text)] == chunk.text
         assert chunk.text.split()[0] == ("alpha" if chunk.metadata["page"] == 0 else "beta")
 
-    # metadata is copied per chunk, not shared
     chunks[0].metadata["page_label"] = "changed"
     assert chunks[1].metadata["page_label"] == "1"
     assert pages[0].metadata["page_label"] == "1"
