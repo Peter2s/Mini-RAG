@@ -10,8 +10,9 @@ Requires [uv](https://docs.astral.sh/uv/), Python 3.12+, and Docker.
 
 ```bash
 uv sync
-cp .env.example .env        # set MONGO_ROOT_PASSWORD (and in MONGODB_URL), QDRANT_API_KEY, ANTHROPIC_API_KEY
-docker compose up -d        # MongoDB on localhost:27017, Qdrant on localhost:6333
+cp .env.example .env        # set POSTGRES_PASSWORD (and in DATABASE_URL), QDRANT_API_KEY, ANTHROPIC_API_KEY
+docker compose up -d        # PostgreSQL on localhost:5432, Qdrant on localhost:6333
+uv run alembic upgrade head # create or update the tables
 uv run uvicorn app.main:app --reload
 ```
 
@@ -19,7 +20,8 @@ Interactive docs: http://localhost:8000/docs
 
 ## Workflow
 
-IDs are MongoDB ObjectIds. Use the `id` from the create response in the later calls.
+IDs are UUIDv7s, which sort by creation time. Use the `id` from the create response in the
+later calls.
 
 ```bash
 # 1. Create a collection and keep its id
@@ -69,30 +71,33 @@ app/
 ├── main.py              # app factory + lifespan (DB, embedder, LLM)
 ├── dependencies.py      # FastAPI Depends wiring
 ├── core/                # settings, domain exceptions, logging
-├── db/                  # MongoDB client + collection schemas (validators, indexes)
-├── models/              # MongoDB documents: Collection, Document, Chunk
+├── db/                  # SQLAlchemy base class, engine and sessions
+├── models/              # SQLAlchemy tables: Collection, Document, Chunk
 ├── schemas/             # Pydantic request/response models
 ├── routes/              # HTTP layer only: validation and status codes
 ├── services/            # business logic: CollectionService, DocumentService, RagService
-├── repositories/        # persistence: MongoDB repos, vector search, file storage
+├── repositories/        # persistence: SQL repos, vector search, file storage
 ├── providers/           # external models: embeddings (hash, Voyage), LLM (Claude)
 └── utils/               # LangChain loaders and RecursiveCharacterTextSplitter
+migrations/              # Alembic migrations
 ```
 
-- **Storage** is MongoDB through PyMongo's async client, run locally with `docker compose`.
-  The `collections`, `documents`, and `chunks` collections each have a strict JSON Schema
-  validator and indexes, defined in `app/db/schema.py` and applied on every startup.
-  Deleting a collection or document also deletes its documents and chunks.
+- **Storage** is PostgreSQL through SQLAlchemy 2 (async, asyncpg), run locally with
+  `docker compose`. The `collections`, `documents`, and `chunks` tables have foreign keys with
+  `ON DELETE CASCADE`, unique and check constraints, and indexes for every query. Alembic
+  migrations in `migrations/` create and change them; the app refuses to start on a database
+  that isn't at the latest migration. Each request uses one session, committed when the
+  request succeeds and rolled back when it fails.
 - **Vector search** goes through one `VectorRepository` interface (`app/repositories/vector/`)
   with two implementations, picked by `VECTOR_STORE`:
   - `qdrant` (default): Qdrant, started by `docker compose`. Each embedding model gets its own
     Qdrant collection (`chunks__<model>`), created at startup. Inside it, all collections are
     partitioned by a `collection_id` field indexed as a tenant key, which is Qdrant's
     recommended multitenancy layout. Its dashboard is at http://localhost:6333/dashboard.
-  - `mongodb`: brute-force cosine similarity over vectors stored on MongoDB chunks. No extra
-    service, fine for thousands of chunks per collection.
+  - `pgvector`: vectors in PostgreSQL. Each embedding model gets its own table
+    (`chunk_vectors__<model>`) with an HNSW index, created at startup. No extra service.
 
-  Chunk text and metadata always stay in MongoDB, and the vector store holds only vectors and
+  Chunk text and metadata always stay in the `chunks` table, and the vector store holds only vectors and
   ids. Indexing records on each chunk which embedding model indexed it (`embedding_model`)
   and when (`indexed_at`), and deleting or reprocessing documents also deletes their vectors.
   After switching vector stores, re-index each collection with `{"do_reset": true}`.
@@ -130,7 +135,7 @@ uv run pre-commit install   # once per clone: installs the git hooks below
 | Every commit | ruff | Lint with autofix, then format. Rules are in `pyproject.toml` |
 | Every commit | typos | Spelling in code, comments, and docs. Reports only |
 | Every commit | gitleaks | API keys, passwords, and other secrets |
-| Every commit | mypy | Strict type checking of `app/` and `tests/` |
+| Every commit | mypy | Strict type checking of `app/`, `migrations/`, and `tests/` |
 | Commit message | conventional-pre-commit | Messages like `feat(scope): description` or `fix: description` |
 | Before push | pytest | The full test suite |
 
@@ -144,8 +149,23 @@ uv run pytest
 ```
 
 Tests replace Claude with a fake provider and use the `hash` embedder. The test that
-runs a real embedding model on Arabic documents is opt-in: `RUN_MODEL_TESTS=1 uv run pytest`. Database tests need MongoDB running
-and Qdrant (`docker compose up -d`). Each test uses its own throwaway MongoDB database and
-Qdrant collection. Tests connect with `MONGODB_TEST_URL`, `QDRANT_TEST_URL`, and
-`QDRANT_TEST_API_KEY` if set, otherwise the app settings, and are skipped when a service is
-unreachable. The vector-store contract tests run against both implementations.
+runs a real embedding model on Arabic documents is opt-in: `RUN_MODEL_TESTS=1 uv run pytest`.
+Database tests need PostgreSQL and Qdrant running (`docker compose up -d`). The test session
+creates its own PostgreSQL database, migrates it with Alembic, empties it before each test,
+and drops it at the end; each Qdrant test uses its own collections. Tests connect with
+`DATABASE_TEST_URL`, `QDRANT_TEST_URL`, and `QDRANT_TEST_API_KEY` if set, otherwise the app
+settings, and are skipped when a service is unreachable. The database user needs permission
+to create databases (the Docker user has it). The vector-store contract tests run against
+both implementations.
+
+### Database migrations
+
+After changing a model in `app/models/`, generate a migration, read it, then apply it:
+
+```bash
+uv run alembic revision --autogenerate -m "add documents.language"
+uv run alembic upgrade head
+```
+
+Autogenerate doesn't notice changed check constraints or server defaults; write those by hand.
+`tests/test_migrations.py` fails when the models and migrations disagree.

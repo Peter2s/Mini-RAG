@@ -1,5 +1,5 @@
 from app.core.enums import DatabaseStatus, HealthStatus
-from app.dependencies import get_mongo, get_vector_repository
+from app.dependencies import get_database, get_vector_repository
 
 
 def test_health(client):
@@ -12,11 +12,11 @@ def test_health(client):
 
 
 def test_health_reports_degraded_when_database_is_unreachable(client):
-    class UnreachableMongo:
-        async def ping(self) -> bool:
+    class UnreachableDatabase:
+        async def ping(self) -> None:
             raise ConnectionError("down")
 
-    client.app.dependency_overrides[get_mongo] = lambda: UnreachableMongo()
+    client.app.dependency_overrides[get_database] = lambda: UnreachableDatabase()
     body = client.get("/api/v1/health").json()
     assert body["status"] == HealthStatus.DEGRADED
     assert body["database"] == DatabaseStatus.UNAVAILABLE

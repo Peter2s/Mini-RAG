@@ -1,93 +1,96 @@
+import math
+import uuid
 from collections.abc import Iterable, Sequence
+from typing import Any
 
-from app.db.types import MongoDocument
-from app.models import Chunk, to_object_id, utcnow
-from app.repositories.base import MongoRepository
+from sqlalchemy import delete, func, insert, update
+
+from app.models import Chunk, EntityId, parse_id
+from app.repositories.base import SqlRepository
 from app.schemas.chunk import TextChunk
 
 
-class ChunkRepository(MongoRepository[Chunk]):
+class ChunkRepository(SqlRepository[Chunk]):
     model = Chunk
 
     async def replace_for_document(
-        self, collection_id: str, document_id: str, chunks: Sequence[TextChunk]
+        self, collection_id: uuid.UUID, document_id: uuid.UUID, chunks: Sequence[TextChunk]
     ) -> int:
-        """Delete a document's existing chunks and insert new ones.
+        """Swap a document's chunks for new ones, all or nothing.
 
-        A standalone MongoDB server has no multi-document transactions, so this runs as two
-        writes. If the insert fails, the caller marks the document as failed.
+        A savepoint keeps the session usable if this fails, so the caller can still record
+        the failure on the document.
         """
-        await self.delete_by_document(document_id)
-        if chunks:
-            await self.collection.insert_many(
-                [
-                    Chunk(
-                        collection_id=collection_id,
-                        document_id=document_id,
-                        chunk_index=index,
-                        text=chunk.text,
-                        metadata=chunk.metadata,
-                    ).to_mongo()
-                    for index, chunk in enumerate(chunks)
-                ]
-            )
+        async with self.session.begin_nested():
+            await self.session.execute(delete(Chunk).where(Chunk.document_id == document_id))
+            if chunks:
+                await self.session.execute(
+                    insert(Chunk),
+                    [
+                        {
+                            "collection_id": collection_id,
+                            "document_id": document_id,
+                            "chunk_index": index,
+                            "text": _storable(chunk.text),
+                            "meta": _storable(chunk.metadata),
+                        }
+                        for index, chunk in enumerate(chunks)
+                    ],
+                )
         return len(chunks)
 
-    async def list_for_indexing(self, collection_id: str, embedding_model: str) -> list[Chunk]:
+    async def list_for_indexing(
+        self, collection_id: EntityId, embedding_model: str
+    ) -> Sequence[Chunk]:
         """Chunks not yet indexed with `embedding_model`: new ones, or indexed by another model."""
-        collection_object_id = to_object_id(collection_id)
-        if collection_object_id is None:
+        parsed = parse_id(collection_id)
+        if parsed is None:
             return []
-        query: MongoDocument = {
-            "collection_id": collection_object_id,
-            "embedding_model": {"$ne": embedding_model},
-        }
-        return await self._find(query, projection={"embedding": 0})
-
-    async def mark_indexed(self, chunk_ids: Sequence[str], embedding_model: str) -> None:
-        object_ids = [object_id for chunk_id in chunk_ids if (object_id := to_object_id(chunk_id))]
-        if object_ids:
-            await self.collection.update_many(
-                {"_id": {"$in": object_ids}},
-                {"$set": {"embedding_model": embedding_model, "indexed_at": utcnow()}},
-            )
-
-    async def mark_unindexed(self, collection_id: str) -> None:
-        """Flag every chunk of a collection for re-embedding."""
-        collection_object_id = to_object_id(collection_id)
-        if collection_object_id is not None:
-            await self.collection.update_many(
-                {"collection_id": collection_object_id},
-                {"$set": {"embedding_model": None, "indexed_at": None}},
-            )
-
-    async def get_many(self, chunk_ids: Iterable[str]) -> list[Chunk]:
-        """Load chunks by id, e.g. to turn vector search hits into text. Missing ids are skipped."""
-        object_ids = [object_id for chunk_id in chunk_ids if (object_id := to_object_id(chunk_id))]
-        if not object_ids:
-            return []
-        return await self._find({"_id": {"$in": object_ids}}, projection={"embedding": 0})
-
-    async def count_by_collection(self, collection_id: str) -> int:
-        collection_object_id = to_object_id(collection_id)
-        return (
-            0
-            if collection_object_id is None
-            else await self.count({"collection_id": collection_object_id})
+        return await self._find(
+            Chunk.collection_id == parsed, Chunk.embedding_model.is_distinct_from(embedding_model)
         )
 
-    async def delete_by_document(self, document_id: str) -> int:
-        document_object_id = to_object_id(document_id)
-        if document_object_id is None:
-            return 0
-        return (
-            await self.collection.delete_many({"document_id": document_object_id})
-        ).deleted_count
+    async def mark_indexed(self, chunk_ids: Iterable[uuid.UUID], embedding_model: str) -> None:
+        ids = list(chunk_ids)
+        if ids:
+            await self.session.execute(
+                update(Chunk)
+                .where(Chunk.id.in_(ids))
+                .values(embedding_model=embedding_model, indexed_at=func.now()),
+                execution_options={"synchronize_session": False},
+            )
 
-    async def delete_by_collection(self, collection_id: str) -> int:
-        collection_object_id = to_object_id(collection_id)
-        if collection_object_id is None:
-            return 0
-        return (
-            await self.collection.delete_many({"collection_id": collection_object_id})
-        ).deleted_count
+    async def mark_unindexed(self, collection_id: uuid.UUID) -> None:
+        """Flag every chunk of a collection for re-embedding."""
+        await self.session.execute(
+            update(Chunk)
+            .where(Chunk.collection_id == collection_id)
+            .values(embedding_model=None, indexed_at=None),
+            execution_options={"synchronize_session": False},
+        )
+
+    async def get_many(self, chunk_ids: Iterable[EntityId]) -> Sequence[Chunk]:
+        """Load chunks by id, e.g. to turn vector search hits into text. Missing ids are skipped."""
+        ids = [parsed for chunk_id in chunk_ids if (parsed := parse_id(chunk_id))]
+        if not ids:
+            return []
+        return await self._find(Chunk.id.in_(ids))
+
+    async def count_by_collection(self, collection_id: EntityId) -> int:
+        parsed = parse_id(collection_id)
+        return 0 if parsed is None else await self.count(Chunk.collection_id == parsed)
+
+
+def _storable(value: Any) -> Any:
+    """Make loader output storable: PostgreSQL rejects NUL characters and non-finite JSON."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_storable(str(key)): _storable(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_storable(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    return _storable(str(value))

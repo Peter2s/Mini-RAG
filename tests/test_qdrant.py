@@ -5,7 +5,6 @@ import uuid
 from contextlib import closing
 
 import pytest
-from bson import ObjectId
 from qdrant_client import QdrantClient, models
 
 from app.core.exceptions import VectorStoreError
@@ -32,7 +31,7 @@ def _repository(
 
 
 def test_point_id_is_a_deterministic_uuid_per_chunk():
-    chunk_id, other = str(ObjectId()), str(ObjectId())
+    chunk_id, other = str(uuid.uuid4()), str(uuid.uuid4())
     assert uuid.UUID(point_id(chunk_id))
     assert point_id(chunk_id) == point_id(chunk_id)
     assert point_id(chunk_id) != point_id(other)
@@ -70,7 +69,7 @@ def test_collection_is_created_at_startup_with_tenant_indexes(qdrant_connection,
 
 
 def test_restart_keeps_vectors(qdrant_connection, qdrant_collection):
-    chunk_id = str(ObjectId())
+    chunk_id = str(uuid.uuid4())
 
     async def write() -> None:
         repository = _repository(qdrant_connection, qdrant_collection)

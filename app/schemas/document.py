@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -8,8 +9,8 @@ from app.core.enums import DocumentStatus
 class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    collection_id: str
+    id: uuid.UUID
+    collection_id: uuid.UUID
     filename: str
     content_type: str | None
     size_bytes: int
@@ -36,7 +37,7 @@ class ProcessRequest(BaseModel):
 
 
 class ProcessResult(BaseModel):
-    document_id: str
+    document_id: uuid.UUID
     status: DocumentStatus
     pages_loaded: int = 0
     chunks_created: int

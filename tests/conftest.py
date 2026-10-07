@@ -2,22 +2,26 @@ import os
 import uuid
 from collections.abc import Iterator
 from contextlib import closing
+from pathlib import Path
 from typing import Any
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from pymongo import MongoClient
-from pymongo.database import Database
-from pymongo.errors import PyMongoError
 from qdrant_client import QdrantClient
+from sqlalchemy import Connection, Engine, MetaData, Table, create_engine, make_url, text
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import Settings
 from app.core.enums import VectorStoreName
-from app.db.types import MongoDocument
 from app.dependencies import get_llm_provider
 from app.main import create_app
 from app.schemas.llm import LLMResponse
+
+ROOT = Path(__file__).resolve().parents[1]
+TABLES = ("collections", "documents", "chunks")
 
 
 class FakeLLM:
@@ -36,41 +40,86 @@ class FakeLLM:
         return None
 
 
+def alembic_config(database_url: str) -> Config:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    config.attributes["configure_logger"] = False
+    return config
+
+
+def sync_url(database_url: str) -> str:
+    """The same database through psycopg, for plain synchronous test code."""
+    url = make_url(database_url).set(drivername="postgresql+psycopg")
+    return url.render_as_string(hide_password=False)
+
+
 @pytest.fixture(scope="session")
-def mongo_url() -> str:
-    """MongoDB for tests: MONGODB_TEST_URL, else MONGODB_URL from the environment or `.env`."""
-    url = os.environ.get("MONGODB_TEST_URL") or Settings().mongodb_url.get_secret_value()
+def postgres_admin() -> Iterator[tuple[Engine, str]]:
+    """The test server: DATABASE_TEST_URL, else DATABASE_URL from the environment or `.env`."""
+    url = os.environ.get("DATABASE_TEST_URL") or Settings().database_url.get_secret_value()
+    engine = create_engine(
+        sync_url(url), isolation_level="AUTOCOMMIT", connect_args={"connect_timeout": 2}
+    )
     try:
-        client: MongoClient[MongoDocument]
-        with MongoClient(url, serverSelectionTimeoutMS=2000) as client:
-            client.admin.command("ping")
-    except PyMongoError as error:
+        with engine.connect():
+            pass
+    except OperationalError as error:
+        engine.dispose()
         pytest.skip(
-            f"MongoDB is not reachable ({error.__class__.__name__}). Run: docker compose up -d"
+            f"PostgreSQL is not reachable ({error.__class__.__name__}). Run: docker compose up -d"
         )
-    return url
+    yield engine, url
+    engine.dispose()
 
 
-@pytest.fixture
-def mongo_db(mongo_url: str) -> Iterator[Database[MongoDocument]]:
-    """A throwaway database per test, dropped afterwards. Used for direct assertions."""
+@pytest.fixture(scope="session")
+def database_url(postgres_admin: tuple[Engine, str]) -> Iterator[str]:
+    """A throwaway database for the test session, migrated to the latest revision."""
+    engine, server_url = postgres_admin
     name = f"mini_rag_test_{uuid.uuid4().hex[:12]}"
-    client: MongoClient[MongoDocument]
-    with MongoClient(mongo_url, tz_aware=True) as client:
-        yield client[name]
-        client.drop_database(name)
+    with engine.connect() as connection:
+        connection.execute(text(f'CREATE DATABASE "{name}"'))
+    url = make_url(server_url).set(database=name).render_as_string(hide_password=False)
+    command.upgrade(alembic_config(url), "head")
+    yield url
+    with engine.connect() as connection:
+        connection.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
+
+
+@pytest.fixture(scope="session")
+def sync_engine(database_url: str) -> Iterator[Engine]:
+    engine = create_engine(sync_url(database_url), isolation_level="AUTOCOMMIT")
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture
-def settings(tmp_path, mongo_url: str, mongo_db: Database[MongoDocument]) -> Settings:
+def db(sync_engine: Engine) -> Iterator[Connection]:
+    """Empty tables for each test, plus a connection for direct assertions."""
+    with sync_engine.connect() as connection:
+        connection.execute(text(f"TRUNCATE {', '.join(TABLES)} CASCADE"))
+        vector_tables: list[str] = list(
+            connection.execute(
+                text(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname = 'public' AND tablename LIKE 'chunk\\_vectors\\_\\_%'"
+                )
+            ).scalars()
+        )
+        for name in vector_tables:
+            Table(name, MetaData()).drop(connection)
+        yield connection
+
+
+@pytest.fixture
+def settings(tmp_path, database_url: str, db: Connection) -> Settings:
     return Settings(
         _env_file=None,
-        mongodb_url=mongo_url,
-        mongodb_database=mongo_db.name,
+        database_url=database_url,
         upload_dir=tmp_path / "uploads",
         max_upload_size_mb=1,
         embedding_provider="hash",
-        vector_store=VectorStoreName.MONGODB,
+        vector_store=VectorStoreName.PGVECTOR,
         anthropic_api_key="test-key",
     )
 
@@ -143,7 +192,7 @@ def qdrant_settings(
 
 @pytest.fixture
 def qdrant_client_app(qdrant_settings: Settings, fake_llm: FakeLLM) -> Iterator[TestClient]:
-    """The API backed by MongoDB for documents and Qdrant for vectors."""
+    """The API backed by PostgreSQL for documents and Qdrant for vectors."""
     app = create_app(qdrant_settings)
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
     with TestClient(app) as test_client:

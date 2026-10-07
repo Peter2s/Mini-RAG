@@ -1,74 +1,59 @@
-from collections.abc import Iterable
+import uuid
+from collections.abc import Iterable, Sequence
 
-from pymongo.errors import DuplicateKeyError
+from sqlalchemy import select
 
-from app.core.exceptions import ConflictError
-from app.models import Document, to_object_id
-from app.repositories.base import MongoRepository
+from app.models import Document, EntityId, parse_id
+from app.repositories.base import SqlRepository
 
 
-class DocumentRepository(MongoRepository[Document]):
+class DocumentRepository(SqlRepository[Document]):
     model = Document
 
-    async def add(self, entity: Document) -> Document:
-        try:
-            return await super().add(entity)
-        except DuplicateKeyError as error:
-            raise ConflictError(
-                "A file with the same content is already in this collection"
-            ) from error
+    def conflict_message(self, entity: Document) -> str:
+        return "A file with the same content is already in this collection"
 
-    async def filenames(self, document_ids: Iterable[str]) -> dict[str, str]:
+    async def filenames(self, document_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
         """Map document ids to their original filenames."""
-        object_ids = [
-            object_id for document_id in document_ids if (object_id := to_object_id(document_id))
-        ]
-        if not object_ids:
+        ids = list(document_ids)
+        if not ids:
             return {}
-        cursor = self.collection.find({"_id": {"$in": object_ids}}, {"filename": 1})
-        return {str(document["_id"]): document["filename"] async for document in cursor}
+        rows = await self.session.execute(
+            select(Document.id, Document.filename).where(Document.id.in_(ids))
+        )
+        return dict(rows.tuples().all())
 
-    async def get_by_content_hash(self, collection_id: str, content_hash: str) -> Document | None:
-        collection_object_id = to_object_id(collection_id)
-        if collection_object_id is None:
+    async def get_by_content_hash(
+        self, collection_id: EntityId, content_hash: str
+    ) -> Document | None:
+        parsed = parse_id(collection_id)
+        if parsed is None:
             return None
         return await self._find_one(
-            {"collection_id": collection_object_id, "content_hash": content_hash}
+            Document.collection_id == parsed, Document.content_hash == content_hash
         )
 
-    async def get_for_collection(self, collection_id: str, document_id: str) -> Document | None:
-        collection_object_id, document_object_id = (
-            to_object_id(collection_id),
-            to_object_id(document_id),
-        )
-        if collection_object_id is None or document_object_id is None:
+    async def get_for_collection(
+        self, collection_id: EntityId, document_id: EntityId
+    ) -> Document | None:
+        parsed_collection, parsed_document = parse_id(collection_id), parse_id(document_id)
+        if parsed_collection is None or parsed_document is None:
             return None
         return await self._find_one(
-            {"_id": document_object_id, "collection_id": collection_object_id}
+            Document.id == parsed_document, Document.collection_id == parsed_collection
         )
 
     async def list_by_collection(
-        self, collection_id: str, offset: int = 0, limit: int = 50
-    ) -> list[Document]:
-        collection_object_id = to_object_id(collection_id)
-        if collection_object_id is None:
+        self, collection_id: EntityId, offset: int = 0, limit: int = 50
+    ) -> Sequence[Document]:
+        parsed = parse_id(collection_id)
+        if parsed is None:
             return []
-        return await self._find({"collection_id": collection_object_id}, skip=offset, limit=limit)
+        return await self._find(Document.collection_id == parsed, offset=offset, limit=limit)
 
-    async def list_all_by_collection(self, collection_id: str) -> list[Document]:
+    async def list_all_by_collection(self, collection_id: EntityId) -> Sequence[Document]:
         return await self.list_by_collection(collection_id, limit=0)
 
-    async def count_by_collection(self, collection_id: str) -> int:
-        collection_object_id = to_object_id(collection_id)
-        return (
-            0
-            if collection_object_id is None
-            else await self.count({"collection_id": collection_object_id})
-        )
-
-    async def delete_by_collection(self, collection_id: str) -> int:
-        collection_object_id = to_object_id(collection_id)
-        if collection_object_id is None:
-            return 0
-        result = await self.collection.delete_many({"collection_id": collection_object_id})
-        return result.deleted_count
+    async def count_by_collection(self, collection_id: EntityId) -> int:
+        parsed = parse_id(collection_id)
+        return 0 if parsed is None else await self.count(Document.collection_id == parsed)

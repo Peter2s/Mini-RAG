@@ -1,12 +1,8 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models import Collection
-from app.repositories import (
-    ChunkRepository,
-    CollectionRepository,
-    DocumentRepository,
-    FileRepository,
-    VectorRepository,
-)
+from app.repositories import CollectionRepository, FileRepository, VectorRepository
 from app.schemas.collection import CollectionCreate, CollectionRead
 from app.schemas.common import Page
 
@@ -14,15 +10,13 @@ from app.schemas.common import Page
 class CollectionService:
     def __init__(
         self,
+        session: AsyncSession,
         collections: CollectionRepository,
-        documents: DocumentRepository,
-        chunks: ChunkRepository,
         files: FileRepository,
         vectors: VectorRepository,
     ) -> None:
+        self.session = session
         self.collections = collections
-        self.documents = documents
-        self.chunks = chunks
         self.files = files
         self.vectors = vectors
 
@@ -48,9 +42,10 @@ class CollectionService:
         )
 
     async def delete(self, collection_id: str) -> None:
+        """Delete a collection. Its documents and chunks go with it (ON DELETE CASCADE)."""
         collection = await self.get(collection_id)
-        await self.vectors.delete_collection(collection_id)
-        await self.chunks.delete_by_collection(collection_id)
-        await self.documents.delete_by_collection(collection_id)
+        key = str(collection.id)
+        await self.vectors.delete_collection(key)
         await self.collections.delete(collection)
-        await self.files.delete_collection(collection_id)
+        await self.session.commit()
+        await self.files.delete_collection(key)

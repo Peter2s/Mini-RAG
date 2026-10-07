@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
-from app.db import MongoDatabase
+from app.db import Database
 from app.providers.embeddings import EmbeddingProvider, build_embedding_provider
 from app.providers.llm import AnthropicLLMProvider
 from app.repositories import build_vector_repository
@@ -30,12 +30,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    mongo = MongoDatabase(settings.mongodb_url.get_secret_value(), settings.mongodb_database)
-    await mongo.init()
-    app.state.mongo = mongo
+    database = Database(settings.database_url.get_secret_value())
+    await database.init()
+    app.state.database = database
     embedder = build_embedding_provider(settings)
     app.state.embedder = embedder
-    vectors = build_vector_repository(settings, mongo, embedder.space)
+    vectors = build_vector_repository(settings, database, embedder.space)
     await vectors.init()
     app.state.vectors = vectors
     app.state.llm = AnthropicLLMProvider(settings)
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.llm.aclose()
         await embedder.aclose()
         await vectors.close()
-        await mongo.close()
+        await database.close()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

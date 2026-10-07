@@ -1,4 +1,4 @@
-from app.db.mongo import MongoDatabase
-from app.db.schema import apply_schema
+from app.db.base import Base, Entity, TimestampMixin
+from app.db.database import Database
 
-__all__ = ["MongoDatabase", "apply_schema"]
+__all__ = ["Base", "Database", "Entity", "TimestampMixin"]

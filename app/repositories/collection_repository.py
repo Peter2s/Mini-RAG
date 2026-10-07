@@ -1,21 +1,17 @@
-from pymongo.errors import DuplicateKeyError
+from collections.abc import Sequence
 
-from app.core.exceptions import ConflictError
 from app.models import Collection
-from app.repositories.base import MongoRepository
+from app.repositories.base import SqlRepository
 
 
-class CollectionRepository(MongoRepository[Collection]):
+class CollectionRepository(SqlRepository[Collection]):
     model = Collection
 
     async def get_by_name(self, name: str) -> Collection | None:
-        return await self._find_one({"name": name})
+        return await self._find_one(Collection.name == name)
 
-    async def add(self, entity: Collection) -> Collection:
-        try:
-            return await super().add(entity)
-        except DuplicateKeyError as error:
-            raise ConflictError(f"Collection '{entity.name}' already exists") from error
+    async def list(self, offset: int = 0, limit: int = 50) -> Sequence[Collection]:
+        return await self._find(offset=offset, limit=limit)
 
-    async def list(self, offset: int = 0, limit: int = 50) -> list[Collection]:
-        return await self._find({}, skip=offset, limit=limit)
+    def conflict_message(self, entity: Collection) -> str:
+        return f"Collection '{entity.name}' already exists"

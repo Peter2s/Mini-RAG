@@ -1,14 +1,14 @@
 from app.core.config import Settings
 from app.core.enums import VectorStoreName
-from app.db import MongoDatabase
+from app.db import Database
 from app.repositories.vector.base import VectorRepository
-from app.repositories.vector.mongo import MongoVectorRepository
+from app.repositories.vector.pgvector import PgVectorRepository
 from app.repositories.vector.qdrant import QdrantVectorRepository
 from app.schemas.vector import EmbeddingSpace
 
 
 def build_vector_repository(
-    settings: Settings, mongo: MongoDatabase, space: EmbeddingSpace
+    settings: Settings, database: Database, space: EmbeddingSpace
 ) -> VectorRepository:
     match settings.vector_store:
         case VectorStoreName.QDRANT:
@@ -21,6 +21,6 @@ def build_vector_repository(
                 collection_prefix=settings.qdrant_collection,
                 space=space,
             )
-        case VectorStoreName.MONGODB:
-            return MongoVectorRepository(mongo.db, space)
+        case VectorStoreName.PGVECTOR:
+            return PgVectorRepository(database.engine, space)
     raise ValueError(f"Unknown vector store: {settings.vector_store}")

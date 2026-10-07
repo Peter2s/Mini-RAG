@@ -1,7 +1,10 @@
 from html import escape
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import Settings
 from app.core.exceptions import BadRequestError, EmbeddingError, NotFoundError
+from app.models import Collection
 from app.providers.embeddings import EmbeddingProvider
 from app.providers.llm import LLMProvider
 from app.repositories import (
@@ -25,6 +28,7 @@ instead of guessing or using outside knowledge.
 class RagService:
     def __init__(
         self,
+        session: AsyncSession,
         settings: Settings,
         collections: CollectionRepository,
         chunks: ChunkRepository,
@@ -33,6 +37,7 @@ class RagService:
         embedder: EmbeddingProvider,
         llm: LLMProvider,
     ) -> None:
+        self.session = session
         self.settings = settings
         self.collections = collections
         self.chunks = chunks
@@ -41,47 +46,54 @@ class RagService:
         self.embedder = embedder
         self.llm = llm
 
-    async def _ensure_collection(self, collection_id: str) -> None:
-        if await self.collections.get(collection_id) is None:
+    async def _get_collection(self, collection_id: str) -> Collection:
+        collection = await self.collections.get(collection_id)
+        if collection is None:
             raise NotFoundError(f"Collection {collection_id} not found")
+        return collection
 
     async def index(self, collection_id: str, do_reset: bool = False) -> IndexResult:
         """Embed chunks not yet indexed by the current model (every chunk with `do_reset`)."""
-        await self._ensure_collection(collection_id)
+        collection = await self._get_collection(collection_id)
+        key = str(collection.id)
         if do_reset:
-            await self.chunks.mark_unindexed(collection_id)
-            await self.vectors.delete_collection(collection_id)
+            await self.chunks.mark_unindexed(collection.id)
+            await self.session.commit()
+            await self.vectors.delete_collection(key)
         model_id = self.embedder.model_id
-        pending = await self.chunks.list_for_indexing(collection_id, embedding_model=model_id)
+        pending = await self.chunks.list_for_indexing(collection.id, embedding_model=model_id)
 
         batch_size = self.settings.embedding_batch_size
         for start in range(0, len(pending), batch_size):
             batch = pending[start : start + batch_size]
             vectors = await self.embedder.embed_documents([chunk.text for chunk in batch])
             points = [
-                VectorPoint(chunk_id=chunk.id, document_id=chunk.document_id, vector=vector)
+                VectorPoint(
+                    chunk_id=str(chunk.id), document_id=str(chunk.document_id), vector=vector
+                )
                 for chunk, vector in zip(batch, vectors, strict=True)
             ]
             try:
-                await self.vectors.upsert(collection_id, points)
+                await self.vectors.upsert(key, points)
             except ValueError as error:
                 raise EmbeddingError(str(error)) from error
             await self.chunks.mark_indexed([chunk.id for chunk in batch], model_id)
+            await self.session.commit()
 
         return IndexResult(
-            collection_id=collection_id,
+            collection_id=key,
             chunks_indexed=len(pending),
-            total_chunks=await self.chunks.count_by_collection(collection_id),
+            total_chunks=await self.chunks.count_by_collection(collection.id),
         )
 
     async def search(self, collection_id: str, query: str, top_k: int) -> SearchResponse:
-        await self._ensure_collection(collection_id)
-        matches = await self._retrieve(collection_id, query, top_k)
+        collection = await self._get_collection(collection_id)
+        matches = await self._retrieve(str(collection.id), query, top_k)
         return SearchResponse(query=query, results=[_to_hit(match) for match in matches])
 
     async def answer(self, collection_id: str, question: str, top_k: int) -> AnswerResponse:
-        await self._ensure_collection(collection_id)
-        matches = await self._retrieve(collection_id, question, top_k)
+        collection = await self._get_collection(collection_id)
+        matches = await self._retrieve(str(collection.id), question, top_k)
         if not matches:
             raise BadRequestError(
                 "This collection has no indexed content. "
@@ -107,20 +119,21 @@ class RagService:
         return await self._to_matches(hits)
 
     async def _to_matches(self, hits: list[VectorHit]) -> list[VectorMatch]:
-        """Attach text, filename, and metadata from MongoDB to vector hits, keeping their order."""
+        """Attach text, filename, and metadata from PostgreSQL to vector hits, in hit order."""
         chunks = {
-            chunk.id: chunk for chunk in await self.chunks.get_many(hit.chunk_id for hit in hits)
+            str(chunk.id): chunk
+            for chunk in await self.chunks.get_many(hit.chunk_id for hit in hits)
         }
         filenames = await self.documents.filenames({chunk.document_id for chunk in chunks.values()})
         return [
             VectorMatch(
-                chunk_id=chunk.id,
-                document_id=chunk.document_id,
+                chunk_id=str(chunk.id),
+                document_id=str(chunk.document_id),
                 filename=filenames.get(chunk.document_id, "unknown"),
                 chunk_index=chunk.chunk_index,
                 text=chunk.text,
                 score=hit.score,
-                metadata=chunk.metadata,
+                metadata=chunk.meta,
             )
             for hit in hits
             if (chunk := chunks.get(hit.chunk_id)) is not None

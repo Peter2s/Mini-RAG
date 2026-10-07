@@ -1,4 +1,5 @@
 import hashlib
+import uuid
 
 import pytest
 
@@ -42,7 +43,9 @@ def test_rejects_empty_and_oversized_files(client, collection):
     assert _upload(client, collection["id"], content=too_big).status_code == 413
 
 
-@pytest.mark.parametrize("collection_id", ["999", "not-an-id", "65f0c0ffee0000000000abcd"])
+@pytest.mark.parametrize(
+    "collection_id", ["999", "not-an-id", "65f0c0ffee0000000000abcd", str(uuid.uuid4())]
+)
 def test_upload_to_missing_collection_404(client, collection_id):
     assert _upload(client, collection_id).status_code == 404
 
@@ -50,6 +53,7 @@ def test_upload_to_missing_collection_404(client, collection_id):
 def test_missing_document_404(client, collection):
     base = f"/api/v1/collections/{collection['id']}/documents"
     assert client.get(f"{base}/65f0c0ffee0000000000abcd").status_code == 404
+    assert client.get(f"{base}/{uuid.uuid4()}").status_code == 404
     assert client.get(f"{base}/bad-id").status_code == 404
 
 

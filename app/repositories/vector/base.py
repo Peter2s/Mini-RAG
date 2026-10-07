@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
@@ -9,9 +10,9 @@ class VectorRepository(ABC):
 
     Stores chunk embeddings and finds the closest ones, scoped to one collection.
 
-    Chunk text and metadata stay in MongoDB, the source of truth. A vector store only keeps
+    Chunk text and metadata stay in PostgreSQL, the source of truth. A vector store only keeps
     what similarity search needs: the vector, and the ids to filter and look chunks up by.
-    Implementations subclass it: QdrantVectorRepository (default) and MongoVectorRepository.
+    Implementations subclass it: QdrantVectorRepository (default) and PgVectorRepository.
     To add a store, subclass this, implement every method, and register it in the factory.
 
     Each instance serves one embedding space (model + dimension), given to the constructor,
@@ -67,3 +68,8 @@ def check_dimension(space: EmbeddingSpace, vectors: Sequence[list[float]]) -> No
                 f"Embedding dimension mismatch: '{space.model_id}' should produce "
                 f"{space.dimension}-dimension vectors, got {len(vector)}."
             )
+
+
+def model_slug(model_id: str, separator: str = "-") -> str:
+    """A model id made safe for names, e.g. "fastembed:google/x-1" -> "fastembed-google-x-1"."""
+    return re.sub(r"[^a-z0-9]+", separator, model_id.lower()).strip(separator)

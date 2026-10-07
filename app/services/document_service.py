@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
@@ -12,7 +13,7 @@ from app.core.exceptions import (
     NotFoundError,
     PayloadTooLargeError,
 )
-from app.models import Document
+from app.models import Collection, Document
 from app.repositories import (
     ChunkRepository,
     CollectionRepository,
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 class DocumentService:
     def __init__(
         self,
+        session: AsyncSession,
         settings: Settings,
         collections: CollectionRepository,
         documents: DocumentRepository,
@@ -44,6 +46,7 @@ class DocumentService:
         files: FileRepository,
         vectors: VectorRepository,
     ) -> None:
+        self.session = session
         self.settings = settings
         self.collections = collections
         self.documents = documents
@@ -51,12 +54,14 @@ class DocumentService:
         self.files = files
         self.vectors = vectors
 
-    async def _ensure_collection(self, collection_id: str) -> None:
-        if await self.collections.get(collection_id) is None:
+    async def _get_collection(self, collection_id: str) -> Collection:
+        collection = await self.collections.get(collection_id)
+        if collection is None:
             raise NotFoundError(f"Collection {collection_id} not found")
+        return collection
 
     async def upload(self, collection_id: str, upload: UploadFile) -> Document:
-        await self._ensure_collection(collection_id)
+        collection = await self._get_collection(collection_id)
 
         filename = Path(upload.filename or "").name
         if not filename:
@@ -80,18 +85,18 @@ class DocumentService:
             raise BadRequestError("Uploaded file is empty")
 
         content_hash = sha256_hex(data)
-        existing = await self.documents.get_by_content_hash(collection_id, content_hash)
+        existing = await self.documents.get_by_content_hash(collection.id, content_hash)
         if existing is not None:
             raise ConflictError(
                 f"A file with the same content is already in this collection: "
                 f"'{existing.filename}' (document {existing.id})"
             )
 
-        path = await self.files.save(collection_id, f"{content_hash}{extension}", data)
+        path = await self.files.save(str(collection.id), f"{content_hash}{extension}", data)
         try:
-            return await self.documents.add(
+            document = await self.documents.add(
                 Document(
-                    collection_id=collection_id,
+                    collection_id=collection.id,
                     filename=filename,
                     stored_path=str(path),
                     content_type=upload.content_type,
@@ -99,11 +104,13 @@ class DocumentService:
                     content_hash=content_hash,
                 )
             )
+            await self.session.commit()
         except ConflictError:
             raise
         except Exception:
             await self.files.delete(path)
             raise
+        return document
 
     async def get(self, collection_id: str, document_id: str) -> Document:
         document = await self.documents.get_for_collection(collection_id, document_id)
@@ -112,22 +119,22 @@ class DocumentService:
         return document
 
     async def list(self, collection_id: str, offset: int, limit: int) -> Page[DocumentRead]:
-        await self._ensure_collection(collection_id)
-        items = await self.documents.list_by_collection(collection_id, offset=offset, limit=limit)
+        collection = await self._get_collection(collection_id)
+        items = await self.documents.list_by_collection(collection.id, offset=offset, limit=limit)
         return Page[DocumentRead](
             items=[DocumentRead.model_validate(document) for document in items],
-            total=await self.documents.count_by_collection(collection_id),
+            total=await self.documents.count_by_collection(collection.id),
             offset=offset,
             limit=limit,
         )
 
     async def delete(self, collection_id: str, document_id: str) -> None:
+        """Delete a document. Its chunks go with it (ON DELETE CASCADE)."""
         document = await self.get(collection_id, document_id)
-        stored_path = document.stored_path
-        await self.vectors.delete_document(collection_id, document_id)
-        await self.chunks.delete_by_document(document_id)
+        await self.vectors.delete_document(str(document.collection_id), str(document.id))
         await self.documents.delete(document)
-        await self.files.delete(stored_path)
+        await self.session.commit()
+        await self.files.delete(document.stored_path)
 
     async def process(
         self, collection_id: str, document_id: str, options: ProcessRequest
@@ -138,15 +145,15 @@ class DocumentService:
     async def process_collection(
         self, collection_id: str, options: ProcessRequest
     ) -> ProcessCollectionResult:
-        await self._ensure_collection(collection_id)
+        collection = await self._get_collection(collection_id)
         chunk_size, chunk_overlap = self._chunk_params(options)
         results = [
             await self._process_document(document, chunk_size, chunk_overlap)
-            for document in await self.documents.list_all_by_collection(collection_id)
+            for document in await self.documents.list_all_by_collection(collection.id)
         ]
         failed = sum(result.status == DocumentStatus.FAILED for result in results)
         return ProcessCollectionResult(
-            collection_id=collection_id,
+            collection_id=str(collection.id),
             documents_processed=len(results) - failed,
             documents_failed=failed,
             chunks_created=sum(result.chunks_created for result in results),
@@ -167,12 +174,13 @@ class DocumentService:
     async def _process_document(
         self, document: Document, chunk_size: int, chunk_overlap: int
     ) -> ProcessResult:
+        """Chunk one document and commit the outcome, so each document's result is kept."""
         try:
             pages = await run_in_threadpool(load_pages, Path(document.stored_path))
             chunks = split_pages(pages, chunk_size, chunk_overlap)
             if not chunks:
                 raise ValueError("No text could be extracted from the document")
-            await self.vectors.delete_document(document.collection_id, document.id)
+            await self.vectors.delete_document(str(document.collection_id), str(document.id))
             created = await self.chunks.replace_for_document(
                 document.collection_id, document.id, chunks
             )
@@ -181,6 +189,7 @@ class DocumentService:
             document.status = DocumentStatus.FAILED
             document.error = str(error)
             await self.documents.save(document)
+            await self.session.commit()
             return ProcessResult(
                 document_id=document.id, status=document.status, chunks_created=0, error=str(error)
             )
@@ -188,6 +197,7 @@ class DocumentService:
         document.status = DocumentStatus.PROCESSED
         document.error = None
         await self.documents.save(document)
+        await self.session.commit()
         return ProcessResult(
             document_id=document.id,
             status=document.status,

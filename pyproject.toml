@@ -10,14 +10,16 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "python-multipart>=0.0.9",
-    "numpy>=1.26",
     "pypdf>=4.2",  # required by LangChain's PyPDFLoader
     "anthropic>=1.0",
     "langchain-community>=0.4.2",
     "langchain-text-splitters>=1.1.2",
-    "pymongo>=4.18.2",
     "fastembed>=0.8.1",
     "qdrant-client>=1.19.1",
+    "sqlalchemy[asyncio]>=2.1",
+    "asyncpg>=0.32.0",
+    "alembic>=1.20.0",
+    "pgvector>=0.5.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +33,7 @@ dev = [
     "ruff==0.16.9",
     "pre-commit>=4.6.2",
     "mypy>=2.3.1",
+    "psycopg[binary]>=3.3.6",
 ]
 
 [tool.uv]
@@ -74,6 +77,9 @@ select = [
     "LOG", "G", # logging
 ]
 
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = ["sqlalchemy.orm.declared_attr.directive"]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
@@ -85,7 +91,7 @@ max-complexity = 10
 
 [tool.mypy]
 python_version = "3.12"
-files = ["app", "tests"]
+files = ["app", "migrations", "tests"]
 plugins = ["pydantic.mypy"]
 strict = true
 warn_unreachable = true

@@ -1,11 +1,9 @@
 from collections.abc import Awaitable, Callable
-from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.core.enums import DatabaseStatus, HealthStatus
-from app.db import MongoDatabase
-from app.dependencies import SettingsDep, VectorsDep, get_mongo
+from app.dependencies import DatabaseDep, SettingsDep, VectorsDep
 from app.schemas.common import HealthResponse
 
 router = APIRouter(tags=["health"])
@@ -22,16 +20,16 @@ async def _check(ping: Callable[[], Awaitable[object]]) -> DatabaseStatus:
 @router.get("/health")
 async def health(
     settings: SettingsDep,
-    mongo: Annotated[MongoDatabase, Depends(get_mongo)],
+    database: DatabaseDep,
     vectors: VectorsDep,
 ) -> HealthResponse:
-    database = await _check(mongo.ping)
+    database_status = await _check(database.ping)
     vector_store = await _check(vectors.ping)
-    healthy = database == vector_store == DatabaseStatus.OK
+    healthy = database_status == vector_store == DatabaseStatus.OK
     return HealthResponse(
         status=HealthStatus.OK if healthy else HealthStatus.DEGRADED,
         app=settings.app_name,
         version=settings.app_version,
-        database=database,
+        database=database_status,
         vector_store=vector_store,
     )

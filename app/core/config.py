@@ -18,8 +18,7 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     debug: bool = False
 
-    mongodb_url: SecretStr = SecretStr("mongodb://localhost:27017")
-    mongodb_database: str = "mini_rag"
+    database_url: SecretStr = SecretStr("postgresql+asyncpg://mini_rag@localhost:5432/mini_rag")
 
     vector_store: VectorStoreName = VectorStoreName.QDRANT
     qdrant_url: str = "http://localhost:6333"

@@ -1,18 +1,17 @@
 """Contract tests: every VectorRepository implementation must behave the same way."""
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from bson import ObjectId
 
 from app.core.config import Settings
 from app.core.enums import VectorStoreName
-from app.db import MongoDatabase
-from app.repositories import ChunkRepository, VectorRepository, build_vector_repository
-from app.repositories.vector import MongoVectorRepository, QdrantVectorRepository
-from app.schemas.chunk import TextChunk
+from app.db import Database
+from app.repositories import VectorRepository, build_vector_repository
+from app.repositories.vector import PgVectorRepository, QdrantVectorRepository
 from app.schemas.vector import EmbeddingSpace, VectorPoint
 
 Scenario = Callable[[VectorRepository, "Corpus"], Awaitable[Any]]
@@ -20,29 +19,27 @@ Scenario = Callable[[VectorRepository, "Corpus"], Awaitable[Any]]
 SPACE = EmbeddingSpace(model_id="test:3", dimension=3)
 
 
+def new_id() -> str:
+    return str(uuid.uuid4())
+
+
 class Corpus:
-    """Two collections with known chunk ids and hand-made 3-d vectors."""
+    """Two collections with known chunk ids and hand-made 3-d vectors.
+
+    Vector stores don't read the chunks table, so plain ids are enough.
+    """
 
     def __init__(self) -> None:
-        self.collection = str(ObjectId())
-        self.other_collection = str(ObjectId())
-        self.document_a = str(ObjectId())
-        self.document_b = str(ObjectId())
-        self.other_document = str(ObjectId())
-        self.chunk_ids: dict[str, list[str]] = {}
-
-    async def create_chunks(self, chunks: ChunkRepository) -> None:
-        layout = {
-            (self.collection, self.document_a): 2,
-            (self.collection, self.document_b): 1,
-            (self.other_collection, self.other_document): 1,
+        self.collection = new_id()
+        self.other_collection = new_id()
+        self.document_a = new_id()
+        self.document_b = new_id()
+        self.other_document = new_id()
+        self.chunk_ids: dict[str, list[str]] = {
+            self.document_a: [new_id(), new_id()],
+            self.document_b: [new_id()],
+            self.other_document: [new_id()],
         }
-        for (collection_id, document_id), count in layout.items():
-            await chunks.replace_for_document(
-                collection_id, document_id, [TextChunk(text=f"chunk {i}") for i in range(count)]
-            )
-            stored = await chunks.list_for_indexing(collection_id, SPACE.model_id)
-            self.chunk_ids[document_id] = [c.id for c in stored if c.document_id == document_id]
 
     def points(self) -> dict[str, list[VectorPoint]]:
         a, b, other = (
@@ -62,7 +59,7 @@ class Corpus:
             await vectors.upsert(collection_id, points)
 
 
-@pytest.fixture(params=[VectorStoreName.MONGODB, VectorStoreName.QDRANT])
+@pytest.fixture(params=[VectorStoreName.PGVECTOR, VectorStoreName.QDRANT])
 def store_settings(request: pytest.FixtureRequest, settings: Settings) -> Settings:
     if request.param == VectorStoreName.QDRANT:
         qdrant_settings: Settings = request.getfixturevalue("qdrant_settings")
@@ -72,17 +69,14 @@ def store_settings(request: pytest.FixtureRequest, settings: Settings) -> Settin
 
 def run(settings: Settings, scenario: Scenario, space: EmbeddingSpace = SPACE) -> Any:
     async def main() -> Any:
-        mongo = MongoDatabase(settings.mongodb_url.get_secret_value(), settings.mongodb_database)
-        await mongo.init()
-        vectors = build_vector_repository(settings, mongo, space)
+        database = Database(settings.database_url.get_secret_value())
+        vectors = build_vector_repository(settings, database, space)
         await vectors.init()
-        corpus = Corpus()
-        await corpus.create_chunks(ChunkRepository(mongo.db))
         try:
-            return await scenario(vectors, corpus)
+            return await scenario(vectors, Corpus())
         finally:
             await vectors.close()
-            await mongo.close()
+            await database.close()
 
     return asyncio.run(main())
 
@@ -196,7 +190,7 @@ def test_ping_succeeds(store_settings):
     run(store_settings, scenario)
 
 
-@pytest.mark.parametrize("implementation", [MongoVectorRepository, QdrantVectorRepository])
+@pytest.mark.parametrize("implementation", [PgVectorRepository, QdrantVectorRepository])
 def test_stores_implement_the_interface(implementation):
     assert issubclass(implementation, VectorRepository)
     assert not implementation.__abstractmethods__

@@ -1,56 +1,69 @@
-from typing import Any
+from collections.abc import Sequence
 
-from bson import ObjectId
-from pymongo.asynchronous.collection import AsyncCollection
-from pymongo.asynchronous.database import AsyncDatabase
+from sqlalchemy import ColumnElement, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.types import MongoDocument
-from app.models import MongoModel, to_object_id, utcnow
-from app.models.base import TimestampedModel
+from app.core.exceptions import ConflictError
+from app.db.base import Entity
+from app.models import EntityId, parse_id
+
+_UNIQUE_VIOLATION = "23505"
 
 
-class MongoRepository[ModelT: MongoModel]:
-    """Generic CRUD over one MongoDB collection. Invalid ids behave like missing documents."""
+def is_unique_violation(error: IntegrityError) -> bool:
+    return getattr(error.orig, "sqlstate", None) == _UNIQUE_VIOLATION
+
+
+class SqlRepository[ModelT: Entity]:
+    """Generic CRUD over one table. Invalid ids behave like missing rows.
+
+    Repositories flush but never commit: the request's session commits, or a service commits
+    where progress has to survive a later failure.
+    """
 
     model: type[ModelT]
 
-    def __init__(self, db: AsyncDatabase[MongoDocument]) -> None:
-        self.collection: AsyncCollection[MongoDocument] = db[self.model.collection_name]
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
 
-    async def get(self, entity_id: str) -> ModelT | None:
-        object_id = to_object_id(entity_id)
-        if object_id is None:
-            return None
-        return await self._find_one({"_id": object_id})
+    async def get(self, entity_id: EntityId) -> ModelT | None:
+        parsed = parse_id(entity_id)
+        return None if parsed is None else await self.session.get(self.model, parsed)
 
     async def add(self, entity: ModelT) -> ModelT:
-        await self.collection.insert_one(entity.to_mongo())
+        """Insert in a savepoint, so a duplicate leaves the session usable."""
+        try:
+            async with self.session.begin_nested():
+                self.session.add(entity)
+        except IntegrityError as error:
+            if is_unique_violation(error):
+                raise ConflictError(self.conflict_message(entity)) from error
+            raise
         return entity
 
     async def save(self, entity: ModelT) -> ModelT:
-        """Replace the stored document with `obj`, refreshing `updated_at` when it has one."""
-        if isinstance(entity, TimestampedModel):
-            entity.updated_at = utcnow()
-        await self.collection.replace_one({"_id": ObjectId(entity.id)}, entity.to_mongo())
+        await self.session.flush()
         return entity
 
     async def delete(self, entity: ModelT) -> None:
-        await self.collection.delete_one({"_id": ObjectId(entity.id)})
+        await self.session.delete(entity)
+        await self.session.flush()
 
-    async def count(self, query: dict[str, Any] | None = None) -> int:
-        return await self.collection.count_documents(query or {})
+    async def count(self, *where: ColumnElement[bool]) -> int:
+        statement = select(func.count()).select_from(self.model).where(*where)
+        return (await self.session.execute(statement)).scalar_one()
 
-    async def _find_one(self, query: dict[str, Any]) -> ModelT | None:
-        data = await self.collection.find_one(query)
-        return self.model.from_mongo(data) if data else None
+    def conflict_message(self, entity: ModelT) -> str:
+        return f"This {self.model.__tablename__.removesuffix('s')} already exists"
+
+    async def _find_one(self, *where: ColumnElement[bool]) -> ModelT | None:
+        return (await self.session.scalars(select(self.model).where(*where))).first()
 
     async def _find(
-        self,
-        query: dict[str, Any],
-        *,
-        skip: int = 0,
-        limit: int = 0,
-        projection: dict[str, Any] | None = None,
-    ) -> list[ModelT]:
-        cursor = self.collection.find(query, projection).sort("_id", 1).skip(skip).limit(limit)
-        return [self.model.from_mongo(data) async for data in cursor]
+        self, *where: ColumnElement[bool], offset: int = 0, limit: int = 0
+    ) -> Sequence[ModelT]:
+        statement = select(self.model).where(*where).order_by(self.model.id).offset(offset)
+        if limit:
+            statement = statement.limit(limit)
+        return (await self.session.scalars(statement)).all()

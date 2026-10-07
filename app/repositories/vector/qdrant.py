@@ -8,14 +8,13 @@ payload field indexed with `is_tenant=True`. That's Qdrant's recommended multite
 one HNSW graph per tenant, fast filtered search, and no per-tenant collection overhead.
 """
 
-import re
 import uuid
 from collections.abc import Awaitable, Sequence
 
 from qdrant_client import AsyncQdrantClient, models
 
 from app.core.exceptions import VectorStoreError
-from app.repositories.vector.base import VectorRepository, check_dimension
+from app.repositories.vector.base import VectorRepository, check_dimension, model_slug
 from app.schemas.vector import EmbeddingSpace, VectorHit, VectorPoint
 
 _COLLECTION_FIELD = "collection_id"
@@ -25,15 +24,15 @@ _CHUNK_FIELD = "chunk_id"
 
 def qdrant_collection_name(prefix: str, model_id: str) -> str:
     """The Qdrant collection for one embedding model: `<prefix>__<model id as a slug>`."""
-    return f"{prefix}__{re.sub(r'[^a-z0-9]+', '-', model_id.lower()).strip('-')}"
+    return f"{prefix}__{model_slug(model_id)}"
 
 
 def point_id(chunk_id: str) -> str:
-    """Qdrant ids must be integers or UUIDs. A 12-byte ObjectId padded to 16 bytes is a UUID.
+    """Qdrant point ids must be integers or UUIDs; chunk ids are UUIDs already.
 
     The mapping is deterministic, so re-indexing a chunk overwrites its point.
     """
-    return str(uuid.UUID(hex=chunk_id + "0" * 8))
+    return str(uuid.UUID(chunk_id))
 
 
 async def _qdrant[T](operation: str, call: Awaitable[T]) -> T:

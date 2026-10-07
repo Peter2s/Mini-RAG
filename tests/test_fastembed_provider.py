@@ -13,6 +13,7 @@ from app.core.enums import EmbeddingProviderName, VectorStoreName
 from app.core.exceptions import EmbeddingError
 from app.providers.embeddings import build_embedding_provider
 from app.providers.embeddings.fastembed_provider import FastEmbedProvider
+from tests import FASTEMBED_BLOCKER
 
 GEMMA = "google/embeddinggemma-300m"
 DESCRIPTION = {
@@ -145,7 +146,10 @@ def test_factory_builds_fastembed_provider(tmp_path):
     not os.environ.get("RUN_MODEL_TESTS"),
     reason="downloads a real model; set RUN_MODEL_TESTS=1 to run",
 )
-def test_arabic_documents_end_to_end_with_a_real_model(tmp_path, mongo_url, mongo_db, fake_llm):
+def test_arabic_documents_end_to_end_with_a_real_model(
+    tmp_path, database_url, db, fake_llm, monkeypatch
+):
+    monkeypatch.setattr(sys, "meta_path", [f for f in sys.meta_path if f is not FASTEMBED_BLOCKER])
     from fastapi.testclient import TestClient
 
     from app.dependencies import get_llm_provider
@@ -153,11 +157,10 @@ def test_arabic_documents_end_to_end_with_a_real_model(tmp_path, mongo_url, mong
 
     settings = Settings(
         _env_file=None,
-        mongodb_url=mongo_url,
-        mongodb_database=mongo_db.name,
+        database_url=database_url,
         upload_dir=tmp_path / "uploads",
         embedding_provider=EmbeddingProviderName.FASTEMBED,
-        vector_store=VectorStoreName.MONGODB,
+        vector_store=VectorStoreName.PGVECTOR,
         fastembed_model=os.environ.get("FASTEMBED_TEST_MODEL", GEMMA),
         models_dir=Path(os.environ.get("MODELS_DIR", tmp_path / "models")),
     )

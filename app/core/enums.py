@@ -26,14 +26,6 @@ class DocumentStatus(StrEnum):
     FAILED = "failed"
 
 
-class MongoCollection(StrEnum):
-    """Names of the MongoDB collections the app stores data in."""
-
-    COLLECTIONS = "collections"
-    DOCUMENTS = "documents"
-    CHUNKS = "chunks"
-
-
 class HealthStatus(StrEnum):
     """Overall state reported by the health check."""
 
@@ -60,4 +52,4 @@ class VectorStoreName(StrEnum):
     """Where chunk embeddings are stored and searched."""
 
     QDRANT = "qdrant"
-    MONGODB = "mongodb"
+    PGVECTOR = "pgvector"

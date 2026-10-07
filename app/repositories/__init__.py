@@ -3,7 +3,7 @@ from app.repositories.collection_repository import CollectionRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.file_repository import FileRepository
 from app.repositories.vector import (
-    MongoVectorRepository,
+    PgVectorRepository,
     QdrantVectorRepository,
     VectorRepository,
     build_vector_repository,
@@ -14,7 +14,7 @@ __all__ = [
     "CollectionRepository",
     "DocumentRepository",
     "FileRepository",
-    "MongoVectorRepository",
+    "PgVectorRepository",
     "QdrantVectorRepository",
     "VectorRepository",
     "build_vector_repository",
